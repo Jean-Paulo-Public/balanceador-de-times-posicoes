@@ -63,9 +63,3 @@ export interface SimulationResult {
   totalImprov: number;
 }
 
-export const predeploy = 'npm run build';
-export const deploy = 'gh-pages -d dist';
-
-export default defineConfig({
-  base: '/balanceador-de-times-posicoes/',
-});
