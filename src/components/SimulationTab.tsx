@@ -1,0 +1,235 @@
+import { useState } from 'react';
+import { usePlayerStore } from '../store/usePlayerStore';
+import type { FormationType, SimulationResult } from '../types';
+import { generateTeams } from '../utils/balancer';
+import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert } from 'lucide-react';
+
+export function SimulationTab() {
+  const { players } = usePlayerStore();
+  const [formation, setFormation] = useState<FormationType>('QUALQUER');
+  const [numTeams, setNumTeams] = useState<number>(2);
+  const [results, setResults] = useState<SimulationResult[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [hasSimulated, setHasSimulated] = useState(false);
+
+  const activePlayersCount = players.filter(p => p.active).length;
+  // Regra 7v7
+  const is7v7 = numTeams === 2 && activePlayersCount >= 14;
+  const playersPerTeam = is7v7 ? 7 : 6;
+  const requiredPlayers = numTeams * playersPerTeam;
+
+  const handleSimulate = () => {
+    setIsSimulating(true);
+    setHasSimulated(true);
+    setTimeout(() => {
+      const simResults = generateTeams(players, formation, numTeams, 3000);
+      setResults(simResults);
+      setCurrentIndex(0);
+      setIsSimulating(false);
+    }, 100);
+  };
+
+  const currentSimulation = results[currentIndex];
+  const renderFieldMap = (players: NonNullable<typeof currentSimulation>['teams'][number]['players']) => {
+    const layout = [
+      { area: 'DEF', label: 'Defesa', roles: ['DEF'] },
+      { area: 'MD', label: 'Volante', roles: ['MD'] },
+      { area: 'MEI', label: 'Meia', roles: ['MEI'] },
+      { area: 'MA', label: 'Meia Ataque', roles: ['MA'] },
+      { area: 'ATA', label: 'Ataque', roles: ['ATA'] },
+    ];
+
+    return (
+      <div style={{ width: '220px', minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '10px', justifyContent: 'center', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>Campo</span>
+        <div style={{ background: 'linear-gradient(180deg, rgba(0,100,0,0.14), rgba(0,130,0,0.24))', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '18px', padding: '12px', display: 'grid', gap: '8px' }}>
+          {layout.map(section => {
+            const playersInSection = players.filter(p => section.roles.includes(p.roleShort || ''));
+            return (
+              <div key={section.area} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '12px', minHeight: '42px', alignItems: 'center', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{section.label}</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text)' }}>
+                  {playersInSection.length > 0 ? playersInSection.map(p => p.player.name).join(', ') : '—'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="animate-fade-in">
+      <div className="header-top">
+        <h1>Simular Partidas</h1>
+        <p style={{ color: 'var(--text-muted)' }}>Gere as equipes mais equilibradas</p>
+      </div>
+
+      <div style={{ padding: '20px' }}>
+        <div className="glass-panel" style={{ marginBottom: '24px' }}>
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+            <div className="input-group" style={{ marginBottom: 0, flex: 1, minWidth: '200px' }}>
+              <label>Formação Tática</label>
+              <select 
+                className="input-field"
+                value={formation}
+                onChange={(e) => setFormation(e.target.value as FormationType)}
+              >
+                <option value="QUALQUER">Qualquer uma (Sorteio por time)</option>
+                <option value="EQUILIBRADA">Equilibrada (1 Def, 1 Vol, 2 Mei, 1 Mei Of, 1 Ata)</option>
+                <option value="OFENSIVA">Ofensiva (1 Def, 1 Vol, 2 Mei, 1 Ata/Mei, 1 Ata)</option>
+                <option value="DEFENSIVA">Defensiva (2 Def/Vol, 1 Vol, 2 Mei, 1 Ata)</option>
+              </select>
+            </div>
+            
+            <div className="input-group" style={{ marginBottom: 0, width: '120px' }}>
+              <label>Qtd. de Times</label>
+              <select 
+                className="input-field"
+                value={numTeams}
+                onChange={(e) => setNumTeams(Number(e.target.value))}
+              >
+                <option value={2}>2 Times</option>
+                <option value={3}>3 Times</option>
+                <option value={4}>4 Times</option>
+              </select>
+            </div>
+          </div>
+          
+          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.875rem', color: activePlayersCount < requiredPlayers ? 'var(--danger)' : 'var(--text-muted)' }}>
+              {activePlayersCount} / {requiredPlayers} jogadores
+            </span>
+            <button 
+              className="btn" 
+              onClick={handleSimulate}
+              disabled={activePlayersCount < requiredPlayers || isSimulating}
+            >
+              <Play size={18} /> {isSimulating ? 'Simulando...' : 'Gerar Times'}
+            </button>
+          </div>
+          {activePlayersCount < requiredPlayers && (
+            <p style={{ fontSize: '0.8rem', color: 'var(--danger)', marginTop: '8px' }}>
+              São necessários exatamente {requiredPlayers} jogadores de linha para formar {numTeams} times completos. Cadastre ou ative mais jogadores!
+            </p>
+          )}
+        </div>
+
+        {results.length > 0 && currentSimulation && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '8px', borderRadius: '50%' }}
+                onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
+                disabled={currentIndex === 0}
+              >
+                <ChevronLeft size={24} />
+              </button>
+              
+              <div style={{ textAlign: 'center' }}>
+                <h3 style={{ margin: 0, color: 'var(--primary)' }}>Cenário {currentIndex + 1}</h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>de {results.length} simulações</span>
+              </div>
+              
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '8px', borderRadius: '50%' }}
+                onClick={() => setCurrentIndex(prev => Math.min(results.length - 1, prev + 1))}
+                disabled={currentIndex === results.length - 1}
+              >
+                <ChevronRight size={24} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {currentSimulation.teams.map((team) => (
+                <div key={team.id} className="glass-panel" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                    <div>
+                      <h3 style={{ margin: 0 }}>{team.name}</h3>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sistema: {team.tacticalSystem}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Overall</span>
+                      <div style={{ 
+                        background: `linear-gradient(135deg, ${team.overall > 75 ? 'var(--secondary)' : team.overall > 50 ? 'var(--star-active)' : 'var(--danger)'}, transparent)`,
+                        padding: '4px 12px', borderRadius: '16px', fontWeight: 'bold'
+                      }}>
+                        {team.overall}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'nowrap' }}>
+                    <div style={{ flex: '1 1 auto', minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {team.players.map((tp, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 500 }}>{tp.player.name}</span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '4px' }}>
+                                (OVR: {Math.round((tp.roleScore / 6) * 100)})
+                              </span>
+                              {tp.improvisationPenalty > 0 && (
+                                <span title="Posição Improvisada">
+                                  <AlertTriangle size={14} color="var(--star-active)" />
+                                </span>
+                              )}
+                              {(tp.player.isCaptain || (tp as any).isCrownFallback) && <span title="Capitão">👑</span>}
+                              {tp.player.isGoalkeeper && (
+                                <span title="Goleiro">
+                                  <ShieldAlert size={14} color="var(--primary)" />
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                              {(tp.roleShort || '').length > 0 && (
+                                <span style={{ background: 'rgba(0,0,0,0.06)', padding: '2px 6px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700 }}>{tp.roleShort}</span>
+                              )}
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{tp.roleLabel || tp.assignedRole}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginLeft: 'auto' }}>
+                      {renderFieldMap(team.players)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {currentSimulation.bench.length > 0 && (
+                <div className="glass-panel" style={{ padding: '16px', border: '1px dashed var(--text-muted)' }}>
+                  <h3 style={{ margin: 0, marginBottom: '12px', color: 'var(--text-muted)' }}>Time de fora (Banco)</h3>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {currentSimulation.bench.map(p => (
+                      <span key={p.id} style={{ background: 'rgba(0,0,0,0.3)', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85rem' }}>
+                        {p.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({p.position === 'MEIA_OFENSIVO' ? 'Meia' : p.position === 'MEIA_DEFENSIVO' ? 'Meia' : p.position === 'DEFENSOR' ? 'Defensor' : 'Atacante'})</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {results.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '40px' }}>
+            <p>Não foi possível montar nenhuma formação válida com os jogadores ativos. Pode faltar meia para formar um time equilibrado.</p>
+          </div>
+        )}
+
+        {results.length === 0 && !isSimulating && !hasSimulated && (
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '40px' }}>
+            <p>Selecione a formação e clique em Gerar Times.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
