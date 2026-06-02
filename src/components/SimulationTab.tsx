@@ -5,7 +5,7 @@ import { generateTeams } from '../utils/balancer';
 import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 export function SimulationTab() {
-  const { players } = usePlayerStore();
+  const { players, neverScaleGoalkeepers, setNeverScaleGoalkeepers } = usePlayerStore();
   const [teamFormations, setTeamFormations] = useState<FormationType[]>(Array(2).fill('QUALQUER'));
   const [numTeams, setNumTeams] = useState<number>(2);
   const [results, setResults] = useState<SimulationResult[]>([]);
@@ -14,16 +14,16 @@ export function SimulationTab() {
   const [hasSimulated, setHasSimulated] = useState(false);
 
   const activePlayersCount = players.filter(p => p.active).length;
-  // Regra 7v7
-  const is7v7 = numTeams === 2 && activePlayersCount >= 14;
-  const playersPerTeam = is7v7 ? 7 : 6;
+  const activeGoalkeepersCount = players.filter(p => p.active && p.isGoalkeeper).length;
+  const hasGoalkeeperSlot = !neverScaleGoalkeepers && [2, 3, 4].includes(numTeams) && activeGoalkeepersCount >= numTeams && activePlayersCount >= numTeams * 7;
+  const playersPerTeam = hasGoalkeeperSlot ? 7 : 6;
   const requiredPlayers = numTeams * playersPerTeam;
 
   const handleSimulate = () => {
     setIsSimulating(true);
     setHasSimulated(true);
     setTimeout(() => {
-      const simResults = generateTeams(players, teamFormations, numTeams, 3000);
+      const simResults = generateTeams(players, teamFormations, numTeams, 3000, neverScaleGoalkeepers);
       setResults(simResults);
       setCurrentIndex(0);
       setIsSimulating(false);
@@ -112,11 +112,23 @@ export function SimulationTab() {
                 <option value={4}>4 Times</option>
               </select>
             </div>
+
+            <div className="input-group" style={{ marginBottom: 0, minWidth: '220px' }}>
+              <label style={{ display: 'block', marginBottom: '8px' }}>Opções</label>
+              <label className="checkbox-group">
+                <input
+                  type="checkbox"
+                  checked={neverScaleGoalkeepers}
+                  onChange={(e) => setNeverScaleGoalkeepers(e.target.checked)}
+                />
+                <span style={{ fontSize: '0.95rem' }}>Nunca escalar goleiros</span>
+              </label>
+            </div>
           </div>
           
           <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.875rem', color: activePlayersCount < requiredPlayers ? 'var(--danger)' : 'var(--text-muted)' }}>
-              {activePlayersCount} / {requiredPlayers} jogadores
+              {activePlayersCount} / {requiredPlayers} jogadores ativos
             </span>
             <button 
               className="btn" 
@@ -128,7 +140,7 @@ export function SimulationTab() {
           </div>
           {activePlayersCount < requiredPlayers && (
             <p style={{ fontSize: '0.8rem', color: 'var(--danger)', marginTop: '8px' }}>
-              São necessários exatamente {requiredPlayers} jogadores de linha para formar {numTeams} times completos. Cadastre ou ative mais jogadores!
+              São necessários exatamente {requiredPlayers} jogadores ativos para formar {numTeams} times completos. Cadastre ou ative mais jogadores!
             </p>
           )}
         </div>

@@ -31,16 +31,19 @@ const normalizePlayerStats = (player: Player): Player => ({
 
 interface PlayerState {
   players: Player[];
+  neverScaleGoalkeepers: boolean;
   addPlayer: (player: Omit<Player, 'id'>) => void;
   updatePlayer: (id: string, player: Partial<Player>) => void;
   deletePlayer: (id: string) => void;
   togglePlayerActive: (id: string) => void;
+  setNeverScaleGoalkeepers: (value: boolean) => void;
 }
 
 export const usePlayerStore = create<PlayerState>()(
   persist(
     (set) => ({
       players: [],
+      neverScaleGoalkeepers: false,
       addPlayer: (player) =>
         set((state) => ({
           players: [...state.players, { ...player, id: crypto.randomUUID() }],
@@ -61,6 +64,8 @@ export const usePlayerStore = create<PlayerState>()(
             p.id === id ? { ...p, active: !p.active } : p
           ),
         })),
+      setNeverScaleGoalkeepers: (value) =>
+        set(() => ({ neverScaleGoalkeepers: value })),
     }),
     {
       name: 'balanceador-times-storage',

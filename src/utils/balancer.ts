@@ -49,24 +49,24 @@ type FormationSlot = {
 const Formations: Record<'EQUILIBRADA' | 'OFENSIVA' | 'DEFENSIVA', FormationSlot[]> = {
   EQUILIBRADA: [
     { id: 'Defensor', allowedOriginalPositions: ['DEFENSOR'], calcScore: scoreDefensor },
-    { id: 'Meia Defensivo', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'DEFENSOR', 'MEIA_OFENSIVO'], calcScore: scoreMeiaDefensivo },
+    { id: 'Volante', allowedOriginalPositions: ['MEIA_DEFENSIVO'], calcScore: scoreMeiaDefensivo },
     { id: 'Meia 1', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
     { id: 'Meia 2', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
-    { id: 'Meia Ofensivo', allowedOriginalPositions: ['MEIA_OFENSIVO', 'MEIA_DEFENSIVO', 'ATACANTE'], calcScore: scoreMeiaOfensivo },
+    { id: 'Meia Ofensivo', allowedOriginalPositions: ['MEIA_OFENSIVO', 'ATACANTE'], calcScore: scoreMeiaOfensivo },
     { id: 'Atacante', allowedOriginalPositions: ['ATACANTE'], calcScore: scoreAtacante },
   ],
   OFENSIVA: [
     { id: 'Defensor', allowedOriginalPositions: ['DEFENSOR'], calcScore: scoreDefensor },
-    { id: 'Meia Defensivo', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'DEFENSOR', 'MEIA_OFENSIVO'], calcScore: scoreMeiaDefensivo },
-    { id: 'Meia 1', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
-    { id: 'Meia 2', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
-    { id: 'Atacante/Meia Of.', allowedOriginalPositions: ['ATACANTE', 'MEIA_OFENSIVO'], calcScore: scoreMeiaOfensivo },
+    { id: 'Volante', allowedOriginalPositions: ['MEIA_DEFENSIVO'], calcScore: scoreMeiaDefensivo },
+    { id: 'Meia', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
+    { id: 'Meia Ofensivo 1', allowedOriginalPositions: ['MEIA_OFENSIVO', 'ATACANTE'], calcScore: scoreMeiaOfensivo },
+    { id: 'Meia Ofensivo 2', allowedOriginalPositions: ['MEIA_OFENSIVO', 'ATACANTE'], calcScore: scoreMeiaOfensivo },
     { id: 'Atacante', allowedOriginalPositions: ['ATACANTE'], calcScore: scoreAtacante },
   ],
   DEFENSIVA: [
     { id: 'Defensor 1', allowedOriginalPositions: ['DEFENSOR'], calcScore: scoreDefensor },
-    { id: 'Defensor/Meia Def.', allowedOriginalPositions: ['DEFENSOR', 'MEIA_DEFENSIVO'], calcScore: scoreMeiaDefensivo },
-    { id: 'Meia Defensivo', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'DEFENSOR', 'MEIA_OFENSIVO'], calcScore: scoreMeiaDefensivo },
+    { id: 'Defensor 2', allowedOriginalPositions: ['DEFENSOR'], calcScore: scoreDefensor },
+    { id: 'Volante', allowedOriginalPositions: ['MEIA_DEFENSIVO'], calcScore: scoreMeiaDefensivo },
     { id: 'Meia 1', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
     { id: 'Meia 2', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
     { id: 'Atacante', allowedOriginalPositions: ['ATACANTE'], calcScore: scoreAtacante },
@@ -77,10 +77,12 @@ export const generateTeams = (
   players: Player[],
   formationType: FormationType | FormationType[],
   numTeams: number,
-  numSimulations: number = 2000
+  numSimulations: number = 2000,
+  neverScaleGoalkeepers: boolean = false
 ): SimulationResult[] => {
   const pool = players.filter(p => p.active);
-  const is7v7 = numTeams === 2 && pool.length >= 14;
+  const activeGoalkeepersCount = pool.filter(p => p.isGoalkeeper).length;
+  const is7v7 = !neverScaleGoalkeepers && [2, 3, 4].includes(numTeams) && activeGoalkeepersCount >= numTeams && pool.length >= numTeams * 7;
   const playersPerTeam = is7v7 ? 7 : 6;
 
   if (pool.length < numTeams * playersPerTeam) return [];
@@ -179,7 +181,7 @@ export const generateTeams = (
         : teamFormation as keyof typeof Formations;
 
       let reqs = [...Formations[fKey]];
-      if (is7v7) {
+      if (is7v7 && !neverScaleGoalkeepers) {
         reqs = [{ id: 'Goleiro', allowedOriginalPositions: ['DEFENSOR', 'MEIA_DEFENSIVO', 'MEIA_OFENSIVO', 'ATACANTE'], calcScore: scoreDefensor }, ...reqs];
       }
 
@@ -195,14 +197,24 @@ export const generateTeams = (
 
     const gks = availablePlayers.filter(p => p.isGoalkeeper);
     if (is7v7) {
-      for (let t = 0; t < numTeams && gks.length > 0; t++) {
-        const gk = gks.shift()!;
-        const selectedIdx = availablePlayers.findIndex(p => p.id === gk.id);
-        const player = availablePlayers.splice(selectedIdx, 1)[0];
+      for (let t = 0; t < numTeams; t++) {
+        const gk = gks.shift();
         const reqIdx = teamsData[t].reqs.findIndex(r => r.id === 'Goleiro');
         if (reqIdx === -1) continue;
 
         const req = teamsData[t].reqs.splice(reqIdx, 1)[0];
+        if (!gk) {
+          isValid = false;
+          break;
+        }
+
+        const selectedIdx = availablePlayers.findIndex(p => p.id === gk.id);
+        if (selectedIdx === -1) {
+          isValid = false;
+          break;
+        }
+
+        const player = availablePlayers.splice(selectedIdx, 1)[0];
         teamAddPlayer(teamsData[t], player, req, 0);
       }
     }
