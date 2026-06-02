@@ -133,12 +133,12 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
           {position === 'DEFENSOR' && (
             <>
               <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <h4 style={{ color: 'var(--primary)', marginBottom: '8px' }}>Status Principal</h4>
+                <h4 style={{ color: 'var(--primary)', marginBottom: '8px' }}>Atributos principais</h4>
                 <StarRating label="Posicionamento / Marcação / Bote" value={stats.def_posicionamentoMarcacao!} onChange={v => updateStat('def_posicionamentoMarcacao', v)} />
                 <StarRating label="Interceptação / Tirada de bola" value={stats.def_interceptacao!} onChange={v => updateStat('def_interceptacao', v)} />
               </div>
               <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <h4 style={{ color: 'var(--secondary)', marginBottom: '8px' }}>Status Secundário (Improviso Volante)</h4>
+                <h4 style={{ color: 'var(--secondary)', marginBottom: '8px' }}>Atributos secundários (Improviso Volante)</h4>
                 <StarRating label="Proteção de bola / Visão / Passe" value={stats.def_sec_protecaoVisaoPasse!} onChange={v => updateStat('def_sec_protecaoVisaoPasse', v)} />
                 <StarRating label="Sair da pressão" value={stats.def_sec_sairPressao!} onChange={v => updateStat('def_sec_sairPressao', v)} />
               </div>
@@ -185,12 +185,12 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
           {position === 'ATACANTE' && (
             <>
               <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <h4 style={{ color: 'var(--primary)', marginBottom: '8px' }}>Status Principal</h4>
+                <h4 style={{ color: 'var(--primary)', marginBottom: '8px' }}>Atributos principais</h4>
                 <StarRating label="Corpo / Posicionamento / Mobilidade" value={stats.ata_corpoPosicionamento!} onChange={v => updateStat('ata_corpoPosicionamento', v)} />
                 <StarRating label="Finalização / Passe de pivô" value={stats.ata_finalizacaoPassePivo!} onChange={v => updateStat('ata_finalizacaoPassePivo', v)} />
               </div>
               <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <h4 style={{ color: 'var(--secondary)', marginBottom: '8px' }}>Status Secundário (Improviso Meia Atacante)</h4>
+                <h4 style={{ color: 'var(--secondary)', marginBottom: '8px' }}>Atributos secundários (Improviso Meia Atacante)</h4>
                 <StarRating label="Drible / Arrancada / Proteção de bola" value={stats.ata_sec_dribleArrancada!} onChange={v => updateStat('ata_sec_dribleArrancada', v)} />
                 <StarRating label="Passe para gol / Tabela" value={stats.ata_sec_passeGolTabela!} onChange={v => updateStat('ata_sec_passeGolTabela', v)} />
               </div>
