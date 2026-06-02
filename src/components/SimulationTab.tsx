@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePlayerStore } from '../store/usePlayerStore';
 import type { FormationType, SimulationResult } from '../types';
 import { generateTeams } from '../utils/balancer';
@@ -18,6 +18,20 @@ export function SimulationTab() {
   const hasGoalkeeperSlot = !neverScaleGoalkeepers && [2, 3, 4].includes(numTeams) && activeGoalkeepersCount >= numTeams && activePlayersCount >= numTeams * 7;
   const playersPerTeam = hasGoalkeeperSlot ? 7 : 6;
   const requiredPlayers = numTeams * playersPerTeam;
+  const suggestedTeams = activePlayersCount <= 17 ? 2 : activePlayersCount <= 23 ? 3 : 4;
+
+  useEffect(() => {
+    const s = suggestedTeams;
+    if (numTeams !== s) {
+      setNumTeams(s);
+      setTeamFormations(prev => {
+        const next = prev.slice(0, s);
+        while (next.length < s) next.push('QUALQUER');
+        return next;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePlayersCount]);
 
   const handleSimulate = () => {
     setIsSimulating(true);
