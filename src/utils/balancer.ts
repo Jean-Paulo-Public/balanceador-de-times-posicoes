@@ -75,7 +75,7 @@ const Formations: Record<'EQUILIBRADA' | 'OFENSIVA' | 'DEFENSIVA', FormationSlot
 
 export const generateTeams = (
   players: Player[],
-  formationType: FormationType,
+  formationType: FormationType | FormationType[],
   numTeams: number,
   numSimulations: number = 2000
 ): SimulationResult[] => {
@@ -173,9 +173,10 @@ export const generateTeams = (
     const getNoise = () => (Math.random() - 0.5) * 1.5;
     let isValid = true;
     const teamsData = Array.from({ length: numTeams }, (_, i) => {
-      const fKey = formationType === 'QUALQUER'
+      const teamFormation = Array.isArray(formationType) ? (formationType[i] ?? 'QUALQUER') : formationType;
+      const fKey = teamFormation === 'QUALQUER'
         ? formationKeys[Math.floor(Math.random() * formationKeys.length)]
-        : formationType as keyof typeof Formations;
+        : teamFormation as keyof typeof Formations;
 
       let reqs = [...Formations[fKey]];
       if (is7v7) {

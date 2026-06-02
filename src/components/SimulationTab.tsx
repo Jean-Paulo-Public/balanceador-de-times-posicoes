@@ -6,7 +6,7 @@ import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert } from 'luc
 
 export function SimulationTab() {
   const { players } = usePlayerStore();
-  const [formation, setFormation] = useState<FormationType>('QUALQUER');
+  const [teamFormations, setTeamFormations] = useState<FormationType[]>(Array(2).fill('QUALQUER'));
   const [numTeams, setNumTeams] = useState<number>(2);
   const [results, setResults] = useState<SimulationResult[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -23,7 +23,7 @@ export function SimulationTab() {
     setIsSimulating(true);
     setHasSimulated(true);
     setTimeout(() => {
-      const simResults = generateTeams(players, formation, numTeams, 3000);
+      const simResults = generateTeams(players, teamFormations, numTeams, 3000);
       setResults(simResults);
       setCurrentIndex(0);
       setIsSimulating(false);
@@ -70,18 +70,26 @@ export function SimulationTab() {
       <div style={{ padding: '20px' }}>
         <div className="glass-panel" style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <div className="input-group" style={{ marginBottom: 0, flex: 1, minWidth: '200px' }}>
-              <label>Formação Tática</label>
-              <select 
-                className="input-field"
-                value={formation}
-                onChange={(e) => setFormation(e.target.value as FormationType)}
-              >
-                <option value="QUALQUER">Qualquer uma (Sorteio por time)</option>
-                <option value="EQUILIBRADA">Equilibrada (1 Def, 1 Vol, 2 Mei, 1 Mei Of, 1 Ata)</option>
-                <option value="OFENSIVA">Ofensiva (1 Def, 1 Vol, 2 Mei, 1 Ata/Mei, 1 Ata)</option>
-                <option value="DEFENSIVA">Defensiva (2 Def/Vol, 1 Vol, 2 Mei, 1 Ata)</option>
-              </select>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1, minWidth: '200px' }}>
+              {teamFormations.map((teamFormation, index) => (
+                <div key={index} className="input-group" style={{ minWidth: '180px' }}>
+                  <label>Formação Time {index + 1}</label>
+                  <select
+                    className="input-field"
+                    value={teamFormation}
+                    onChange={(e) => setTeamFormations(prev => {
+                      const next = [...prev];
+                      next[index] = e.target.value as FormationType;
+                      return next;
+                    })}
+                  >
+                    <option value="QUALQUER">Qualquer uma</option>
+                    <option value="EQUILIBRADA">Equilibrada</option>
+                    <option value="OFENSIVA">Ofensiva</option>
+                    <option value="DEFENSIVA">Defensiva</option>
+                  </select>
+                </div>
+              ))}
             </div>
             
             <div className="input-group" style={{ marginBottom: 0, width: '120px' }}>
@@ -89,7 +97,15 @@ export function SimulationTab() {
               <select 
                 className="input-field"
                 value={numTeams}
-                onChange={(e) => setNumTeams(Number(e.target.value))}
+                onChange={(e) => {
+                  const nextNum = Number(e.target.value);
+                  setNumTeams(nextNum);
+                  setTeamFormations(prev => {
+                    const next = prev.slice(0, nextNum);
+                    while (next.length < nextNum) next.push('QUALQUER');
+                    return next;
+                  });
+                }}
               >
                 <option value={2}>2 Times</option>
                 <option value={3}>3 Times</option>
