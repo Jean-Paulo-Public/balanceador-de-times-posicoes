@@ -162,7 +162,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
                   </span>
                 </div>
                 <StarRating label="Finalização" value={stats.mei_of_finalizacao!} onChange={v => updateStat('mei_of_finalizacao', v)} />
-                <StarRating label="Drible / Arrancada" value={stats.mei_of_dribleArrancada!} onChange={v => updateStat('mei_of_dribleArrancada', v)} />
+                <StarRating label="Drible / Arrancada / Proteção de bola" value={stats.mei_of_dribleArrancada!} onChange={v => updateStat('mei_of_dribleArrancada', v)} />
                 <StarRating label="Passe para gol / Tabela" value={stats.mei_of_passeGolTabela!} onChange={v => updateStat('mei_of_passeGolTabela', v)} />
               </div>
 
