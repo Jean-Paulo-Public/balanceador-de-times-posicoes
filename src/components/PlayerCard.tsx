@@ -31,17 +31,17 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
     let secStars = 1;
 
     if (player.position === 'DEFENSOR') {
-      mainStars = avg([s.def_posicionamentoMarcacao, s.def_interceptacao]);
-      secStars = avg([s.def_sec_protecaoVisaoPasse, s.def_sec_sairPressao]);
+      mainStars = avg([s.def_posicionamentoMarcacao, s.def_interceptacao, s.geral_recomposicaoVelocidadeVigor]);
+      secStars = avg([s.def_sec_protecaoVisaoPasse, s.def_sec_sairPressao, s.geral_recomposicaoVelocidadeVigor]);
     } else if (player.position === 'MEIA_DEFENSIVO') {
-      mainStars = avg([s.mei_def_sairPressao, s.mei_def_posicionamentoMarcacao, s.mei_def_interceptacao, s.mei_protecaoVisaoPasse]);
-      secStars = avg([s.mei_of_finalizacao, s.mei_of_dribleArrancada, s.mei_of_passeGolTabela]);
+      mainStars = avg([s.mei_def_sairPressao, s.mei_def_posicionamentoMarcacao, s.mei_def_interceptacao, s.mei_protecaoVisaoPasse, s.geral_recomposicaoVelocidadeVigor]);
+      secStars = avg([s.mei_of_finalizacao, s.mei_of_dribleArrancada, s.mei_of_passeGolTabela, s.geral_recomposicaoVelocidadeVigor]);
     } else if (player.position === 'MEIA_OFENSIVO') {
-      mainStars = avg([s.mei_of_finalizacao, s.mei_of_dribleArrancada, s.mei_of_passeGolTabela, s.mei_protecaoVisaoPasse]);
-      secStars = avg([s.mei_def_sairPressao, s.mei_def_posicionamentoMarcacao, s.mei_def_interceptacao]);
+      mainStars = avg([s.mei_of_finalizacao, s.mei_of_dribleArrancada, s.mei_of_passeGolTabela, s.mei_protecaoVisaoPasse, s.geral_recomposicaoVelocidadeVigor]);
+      secStars = avg([s.mei_def_sairPressao, s.mei_def_posicionamentoMarcacao, s.mei_def_interceptacao, s.geral_recomposicaoVelocidadeVigor]);
     } else if (player.position === 'ATACANTE') {
-      mainStars = avg([s.ata_corpoPosicionamento, s.ata_finalizacaoPassePivo]);
-      secStars = avg([s.ata_sec_dribleArrancada, s.ata_sec_passeGolTabela]);
+      mainStars = avg([s.ata_corpoPosicionamento, s.ata_finalizacaoPassePivo, s.geral_recomposicaoVelocidadeVigor]);
+      secStars = avg([s.ata_sec_dribleArrancada, s.ata_sec_passeGolTabela, s.geral_recomposicaoVelocidadeVigor]);
     }
 
     return {
