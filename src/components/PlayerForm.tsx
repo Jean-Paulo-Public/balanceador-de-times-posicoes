@@ -8,6 +8,25 @@ interface PlayerFormProps {
   editingPlayer?: Player;
 }
 
+const defaultStats: PlayerStats = {
+  mei_protecaoVisaoPasse: 3,
+  mei_of_finalizacao: 3,
+  mei_of_dribleArrancada: 3,
+  mei_of_passeGolTabela: 3,
+  mei_def_sairPressao: 3,
+  mei_def_posicionamentoMarcacao: 3,
+  mei_def_interceptacao: 3,
+  def_posicionamentoMarcacao: 3,
+  def_interceptacao: 3,
+  def_sec_protecaoVisaoPasse: 3,
+  def_sec_sairPressao: 3,
+  ata_corpoPosicionamento: 3,
+  ata_finalizacaoPassePivo: 3,
+  ata_sec_dribleArrancada: 3,
+  ata_sec_passeGolTabela: 3,
+  geral_recomposicaoVelocidadeVigor: 3,
+};
+
 export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const { addPlayer, updatePlayer } = usePlayerStore();
   
@@ -17,22 +36,9 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const [position, setPosition] = useState<Position>(editingPlayer?.position || 'DEFENSOR');
   
   // Initialize stats with defaults or existing values
-  const [stats, setStats] = useState<PlayerStats>(editingPlayer?.stats || {
-    mei_protecaoVisaoPasse: 3,
-    mei_of_finalizacao: 3,
-    mei_of_dribleArrancada: 3,
-    mei_of_passeGolTabela: 3,
-    mei_def_sairPressao: 3,
-    mei_def_posicionamentoMarcacao: 3,
-    mei_def_interceptacao: 3,
-    def_posicionamentoMarcacao: 3,
-    def_interceptacao: 3,
-    def_sec_protecaoVisaoPasse: 3,
-    def_sec_sairPressao: 3,
-    ata_corpoPosicionamento: 3,
-    ata_finalizacaoPassePivo: 3,
-    ata_sec_dribleArrancada: 3,
-    ata_sec_passeGolTabela: 3,
+  const [stats, setStats] = useState<PlayerStats>({
+    ...defaultStats,
+    ...(editingPlayer?.stats || {}),
   });
 
   const updateStat = (key: keyof PlayerStats, value: number) => {
@@ -116,6 +122,13 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
 
         <div style={{ borderTop: '1px solid var(--border-color)', margin: '20px 0', paddingTop: '20px' }}>
           <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Atributos do Jogador</h3>
+          <div style={{ marginBottom: '20px' }}>
+            <StarRating
+              label="Recomposição defensiva / Velocidade / Vigor Físico"
+              value={stats.geral_recomposicaoVelocidadeVigor!}
+              onChange={v => updateStat('geral_recomposicaoVelocidadeVigor', v)}
+            />
+          </div>
 
           {position === 'DEFENSOR' && (
             <>

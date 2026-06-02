@@ -25,6 +25,9 @@ export interface PlayerStats {
   ata_finalizacaoPassePivo?: number;
   ata_sec_dribleArrancada?: number;
   ata_sec_passeGolTabela?: number;
+
+  // Atributo geral para todos os jogadores
+  geral_recomposicaoVelocidadeVigor?: number;
 }
 
 export interface Player {
