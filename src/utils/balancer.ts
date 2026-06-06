@@ -19,6 +19,7 @@ const scoreMeiaDefensivo = (p: Player) => {
 
 const scoreMeia = (p: Player) => {
   if (p.position === 'MEIA_DEFENSIVO' || p.position === 'MEIA_OFENSIVO') {
+    // REGRA: Média dos atributos base com seus principais e secundários (sem redutor de improviso)
     const off = getAvg([p.stats.mei_of_finalizacao, p.stats.mei_of_dribleArrancada, p.stats.mei_of_passeGolTabela, p.stats.geral_recomposicaoVelocidadeVigor]);
     const def = getAvg([p.stats.mei_def_sairPressao, p.stats.mei_def_posicionamentoMarcacao, p.stats.mei_def_interceptacao, p.stats.geral_recomposicaoVelocidadeVigor]);
     const base = getAvg([p.stats.mei_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);
@@ -70,6 +71,10 @@ const isImprovisationAllowed = (playerPosition: Player['position'], targetRoleId
   }
   if (role.includes('atacante')) {
     return playerPosition === 'MEIA_OFENSIVO';
+  }
+  // Se o destino for uma vaga genérica de "Meia" (MEI), volantes e meias ofensivos não são considerados improvisos
+  if (role === 'meia' || role.includes('meia 1') || role.includes('meia 2')) {
+    if (playerPosition === 'MEIA_DEFENSIVO' || playerPosition === 'MEIA_OFENSIVO') return true;
   }
   return true;
 };
@@ -157,9 +162,14 @@ export const generateTeams = (
       const impro = improvised || player.position === 'ATACANTE';
       return { roleShort: 'MA', roleLabel: `Meia Atacante${impro ? ' (improvisado)' : ''}` };
     }
-    if (lower.includes('meia')) {
-      return { roleShort: 'MEI', roleLabel: `Meia${improvised ? ' (improvisado)' : ''}` };
+    
+    // Tratamento customizado para slots genéricos de Meia (MEI)
+    if (lower === 'meia' || lower.includes('meia 1') || lower.includes('meia 2')) {
+      const isNativeMid = player.position === 'MEIA_DEFENSIVO' || player.position === 'MEIA_OFENSIVO';
+      const actualImpro = isNativeMid ? false : improvised;
+      return { roleShort: 'MEI', roleLabel: `Meia${actualImpro ? ' (improvisado)' : ''}` };
     }
+
     if (lower.includes('atacante')) {
       const impro = improvised || player.position !== 'ATACANTE';
       return { roleShort: 'ATA', roleLabel: `Atacante${impro ? ' (improvisado)' : ''}` };
@@ -176,7 +186,15 @@ export const generateTeams = (
     isGoalkeeperRole: boolean = false,
     forceGkLowStats: boolean = false
   ) => {
-    const labels = getRoleLabels(player, req.id, improvised === 1, isGoalkeeperRole);
+    const lowerReq = req.id.toLowerCase();
+    // Se o slot for Meia (MEI) e o jogador for Meia Atacante ou Volante, forçamos o indicador de improviso para 0
+    let finalImprovisedPenalty = improvised;
+    if ((lowerReq === 'meia' || lowerReq.includes('meia 1') || lowerReq.includes('meia 2')) && 
+        (player.position === 'MEIA_DEFENSIVO' || player.position === 'MEIA_OFENSIVO')) {
+      finalImprovisedPenalty = 0;
+    }
+
+    const labels = getRoleLabels(player, req.id, finalImprovisedPenalty === 1, isGoalkeeperRole);
     const finalRoleScore = isGoalkeeperRole 
       ? getAvg([scoreGoalkeeper(player, forceGkLowStats), getLineScoreByPosition(player, req.id)])
       : getLineScoreByPosition(player, req.id);
@@ -185,13 +203,12 @@ export const generateTeams = (
       player,
       assignedRole: req.id,
       roleScore: finalRoleScore,
-      improvisationPenalty: improvised,
+      improvisationPenalty: finalImprovisedPenalty,
       ...labels
     });
   };
 
   for (let iter = 0; iter < numSimulations; iter++) {
-    // Clonamos o pool a cada simulação para controle estrito e manipulação pura
     const workingPool = [...pool].sort(() => Math.random() - 0.5);
 
     const getNoise = () => (Math.random() - 0.5) * 1.5;
@@ -233,7 +250,6 @@ export const generateTeams = (
     ) => {
       if (workingPool.length === 0) return false;
       
-      // Filtra tirando goleiros nativos de linha para preservar a escalação limpa da linha
       const lineOptions = workingPool.filter(p => !p.isGoalkeeper);
       const playerIndexInOptions = selectBestPlayerIndex(req, lineOptions);
       
@@ -244,7 +260,9 @@ export const generateTeams = (
       
       workingPool.splice(actualIdxInWorkingPool, 1);
       team.reqs = team.reqs.filter((r) => r.originalIndex !== req.originalIndex);
-      teamAddPlayer(team, chosenPlayer, req, req.allowedOriginalPositions.includes(chosenPlayer.position) ? 0 : 1, false);
+      
+      const isAllowedDirectly = req.allowedOriginalPositions.includes(chosenPlayer.position);
+      teamAddPlayer(team, chosenPlayer, req, isAllowedDirectly ? 0 : 1, false);
       return true;
     };
 
@@ -281,7 +299,6 @@ export const generateTeams = (
       };
     });
 
-    // Fluxo estruturado de preenchimento dos 6 de linha respeitando critérios táticos
     let validGeneration = true;
 
     // 1. Atacantes e Meias Ofensivos
@@ -315,14 +332,12 @@ export const generateTeams = (
     }
     if (!validGeneration) continue;
 
-    // CRITÉRIO DE SALVAGUARDA: Garante matematicamente 6 jogadores de linha escalados por time
     const missingLinePlayers = teamsData.some(t => t.players.length < 6);
     if (missingLinePlayers) continue;
 
-    // Alocação de Goleiros (Regra: Prefira não escalar goleiro se faltar jogadores, mantendo a linha intacta)
     if (!neverScaleGoalkeepers) {
       for (let t = 0; t < numTeams; t++) {
-        if (workingPool.length === 0) break; // Sem peças suficientes? O time da simulação fica sem goleiro, mas válido na linha.
+        if (workingPool.length === 0) break;
 
         let chosenGkPlayer: Player | null = null;
         let gkIdx = workingPool.findIndex(p => p.isGoalkeeper);
@@ -349,7 +364,6 @@ export const generateTeams = (
       }
     }
 
-    // Distribuição de reservas do reservatório restante no Banco
     let currentTeamBenchIdx = 0;
     while (workingPool.length > 0) {
       const player = workingPool.shift()!;
@@ -371,7 +385,6 @@ export const generateTeams = (
       currentTeamBenchIdx++;
     }
 
-    // Processamento de médias de Overalls
     let benchToTitularDiff = 0;
     teamsData.forEach(team => {
       const sumScores = team.players.reduce((s, tp) => s + tp.roleScore, 0);
@@ -427,7 +440,6 @@ export const generateTeams = (
     });
   }
 
-  // Ordenação inteligente baseada nos Tiers e critérios de desempate
   results.sort((a, b) => {
     const eqA = a.equilibrium ?? 0;
     const eqB = b.equilibrium ?? 0;
