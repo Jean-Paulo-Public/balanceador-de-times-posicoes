@@ -97,11 +97,13 @@ const getDefaultPlayers = (): Player[] => {
 interface PlayerState {
   players: Player[];
   neverScaleGoalkeepers: boolean;
+  generateTestPlayersOnEmpty: boolean;
   addPlayer: (player: Omit<Player, 'id'>) => void;
   updatePlayer: (id: string, player: Partial<Player>) => void;
   deletePlayer: (id: string) => void;
   togglePlayerActive: (id: string) => void;
   setNeverScaleGoalkeepers: (value: boolean) => void;
+  setGenerateTestPlayersOnEmpty: (value: boolean) => void;
   setPlayers: (players: Player[]) => void;
 }
 
@@ -110,6 +112,7 @@ export const usePlayerStore = create<PlayerState>()(
     (set) => ({
       players: getDefaultPlayers(),
       neverScaleGoalkeepers: false,
+      generateTestPlayersOnEmpty: false,
       addPlayer: (player) =>
         set((state) => ({
           players: [...state.players, { ...player, id: crypto.randomUUID() }],
@@ -132,6 +135,8 @@ export const usePlayerStore = create<PlayerState>()(
         })),
       setNeverScaleGoalkeepers: (value) =>
         set(() => ({ neverScaleGoalkeepers: value })),
+      setGenerateTestPlayersOnEmpty: (value) =>
+        set(() => ({ generateTestPlayersOnEmpty: value })),
       setPlayers: (players) => set(() => ({ players })),
     }),
     {
@@ -140,7 +145,9 @@ export const usePlayerStore = create<PlayerState>()(
         if (!state) return;
 
         if (!state.players?.length) {
-          state.players = getDefaultPlayers();
+          if (state.generateTestPlayersOnEmpty) {
+            state.players = getDefaultPlayers();
+          }
           return;
         }
 

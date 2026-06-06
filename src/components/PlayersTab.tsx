@@ -6,7 +6,7 @@ import { UserPlus, Users } from 'lucide-react';
 import type { Player } from '../types';
 
 export function PlayersTab() {
-  const { players, setPlayers } = usePlayerStore();
+  const { players, setPlayers, generateTestPlayersOnEmpty, setGenerateTestPlayersOnEmpty } = usePlayerStore();
   const [showForm, setShowForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | undefined>(undefined);
   const [importError, setImportError] = useState<string | null>(null);
@@ -121,6 +121,14 @@ export function PlayersTab() {
               style={{ display: 'none' }}
               onChange={handleImportFile}
             />
+            <label className="checkbox-group">
+              <input 
+                type="checkbox" 
+                checked={generateTestPlayersOnEmpty}
+                onChange={(e) => setGenerateTestPlayersOnEmpty(e.target.checked)}
+              />
+              <span>Gerar lista de jogadores de teste quando tiver 0 jogadores cadastrados</span>
+            </label>
             {importError && (
               <div style={{ color: 'var(--danger)', marginBottom: '16px' }}>
                 {importError}
