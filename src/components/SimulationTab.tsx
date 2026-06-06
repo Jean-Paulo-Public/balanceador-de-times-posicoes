@@ -13,12 +13,16 @@ export function SimulationTab() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasSimulated, setHasSimulated] = useState(false);
 
-  const activePlayersCount = players.filter(p => p.active).length;
-  const activeGoalkeepersCount = players.filter(p => p.active && p.isGoalkeeper).length;
-  const hasGoalkeeperSlot = !neverScaleGoalkeepers && [2, 3, 4].includes(numTeams) && activeGoalkeepersCount >= numTeams && activePlayersCount >= numTeams * 7;
-  const playersPerTeam = hasGoalkeeperSlot ? 7 : 6;
-  const requiredPlayers = numTeams * playersPerTeam;
+  // --- NOVA LOGICA DE CONTAGEM E VALIDAÇÃO FLEXÍVEL ---
+  const activePlayers = players.filter(p => p.active);
+  const activePlayersCount = activePlayers.length;
+
+  // O mínimo absoluto necessário são 6 jogadores de linha por time solicitado
+  const requiredPlayers = numTeams * 6;
+  
+  // Sugestão de quantidade de times baseada no tamanho do elenco de linha ativo
   const suggestedTeams = activePlayersCount <= 17 ? 2 : activePlayersCount <= 23 ? 3 : 4;
+  // -----------------------------------------------------
 
   useEffect(() => {
     const s = suggestedTeams;
@@ -142,7 +146,7 @@ export function SimulationTab() {
           
           <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.875rem', color: activePlayersCount < requiredPlayers ? 'var(--danger)' : 'var(--text-muted)' }}>
-              {activePlayersCount} / {requiredPlayers} jogadores ativos
+              {activePlayersCount} / {requiredPlayers} jogadores ativos (Mínimo de linha atingido)
             </span>
             <button 
               className="btn" 
@@ -154,7 +158,7 @@ export function SimulationTab() {
           </div>
           {activePlayersCount < requiredPlayers && (
             <p style={{ fontSize: '0.8rem', color: 'var(--danger)', marginTop: '8px' }}>
-              São necessários exatamente {requiredPlayers} jogadores ativos para formar {numTeams} times completos. Cadastre ou ative mais jogadores!
+              São necessários pelo menos {requiredPlayers} jogadores ativos para preencher as linhas de {numTeams} times (6 por time). Cadastre ou ative mais jogadores!
             </p>
           )}
         </div>
@@ -262,7 +266,7 @@ export function SimulationTab() {
         
         {results.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '40px' }}>
-            <p>Não foi possível montar nenhuma formação válida com os jogadores ativos. Pode faltar meia para formar um time equilibrado.</p>
+            <p>Não foi possível gerar um balanceamento com os critérios selecionados. Verifique as configurações de formação dos times.</p>
           </div>
         )}
 
