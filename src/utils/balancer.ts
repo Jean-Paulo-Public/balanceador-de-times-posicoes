@@ -198,8 +198,7 @@ export const generateTeams = (
     }
 
     const getNoise = () => (Math.random() - 0.5) * 1.5;
-    let isValid = true;
-    
+
     const teamsData = Array.from({ length: numTeams }, (_, i) => {
       const teamFormation = Array.isArray(formationType) ? (formationType[i] ?? 'QUALQUER') : formationType;
       const fKey = teamFormation === 'QUALQUER'
