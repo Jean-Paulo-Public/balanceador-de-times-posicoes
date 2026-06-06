@@ -372,13 +372,28 @@ export const generateTeams = (
     });
   }
 
-  // Ordena os resultados priorizando o menor nível de improvisação e o maior equilíbrio técnico entre equipes
-  results.sort((a, b) => {
-    if ((a as any).totalImprov !== (b as any).totalImprov) {
-      return (a as any).totalImprov - (b as any).totalImprov;
+  const isAllQualquer = Array.isArray(formationType) && formationType.length === numTeams && formationType.every(f => f === 'QUALQUER');
+  let finalResults = results;
+
+  if (isAllQualquer) {
+    const fixedFormations: FormationType[] = ['EQUILIBRADA', 'OFENSIVA', 'DEFENSIVA'];
+    const fixedResults = fixedFormations
+      .map((fixed) => {
+        const fixedFormationArray = Array(numTeams).fill(fixed) as FormationType[];
+        const fixedSimulations = generateTeams(players, fixedFormationArray, numTeams, Math.max(300, Math.floor(numSimulations / 3)), neverScaleGoalkeepers);
+        return fixedSimulations.length > 0 ? fixedSimulations[0] : null;
+      })
+      .filter((item): item is SimulationResult => item !== null);
+
+    finalResults = [...results, ...fixedResults];
+  }
+
+  finalResults.sort((a, b) => {
+    if (a.totalImprov !== b.totalImprov) {
+      return a.totalImprov - b.totalImprov;
     }
     return a.scoreDeviation - b.scoreDeviation;
   });
 
-  return results.slice(0, 10);
+  return finalResults;
 };
