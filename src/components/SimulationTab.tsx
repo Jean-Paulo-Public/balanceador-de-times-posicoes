@@ -49,26 +49,42 @@ export function SimulationTab() {
   };
 
   const currentSimulation = results[currentIndex];
-  const renderFieldMap = (players: NonNullable<typeof currentSimulation>['teams'][number]['players']) => {
+  
+  // Validação dinâmica do limite de equilíbrio técnico
+  const isImbalanced = currentSimulation && (currentSimulation.equilibrium ?? 0) > 100;
+
+  const renderFieldMap = (playersList: NonNullable<typeof currentSimulation>['teams'][number]['players']) => {
+    // Layout base das linhas de jogo
     const layout = [
-      { area: 'DEF', label: 'Defesa', roles: ['DEF'] },
-      { area: 'MD', label: 'Volante', roles: ['MD'] },
-      { area: 'MEI', label: 'Meia', roles: ['MEI'] },
-      { area: 'MA', label: 'Meia Ataque', roles: ['MA'] },
-      { area: 'ATA', label: 'Ataque', roles: ['ATA'] },
+      { area: 'DEF', label: 'Defesa', roles: ['DEF'], isGK: false },
+      { area: 'MD', label: 'Volante', roles: ['MD'], isGK: false },
+      { area: 'MEI', label: 'Meia', roles: ['MEI'], isGK: false },
+      { area: 'MA', label: 'Meia Ataque', roles: ['MA'], isGK: false },
+      { area: 'ATA', label: 'Ataque', roles: ['ATA'], isGK: false },
     ];
 
+    // Verifica se há um goleiro escalado neste time específico
+    const hasGoalkeeper = playersList.some(p => p.player.isGoalkeeper);
+
+    // Se houver goleiro, adiciona-o no topo do campinho (antes da defesa)
+    if (hasGoalkeeper) {
+      layout.unshift({ area: 'GK', label: 'Goleiro', roles: [], isGK: true });
+    }
+
     return (
-      /* CORRIGIDO: margin alterada de '4px 0 0 auto' para '4px 0 0 0' para alinhar à esquerda quando quebrar linha */
       <div style={{ flex: '0 1 auto', width: 'max-content', display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center', alignItems: 'center', margin: '4px 0 0 0', padding: '0 4px' }}>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>Posicionamento tático</span>
         
         <div style={{ background: 'linear-gradient(180deg, rgba(0,100,0,0.12), rgba(0,130,0,0.22))', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '10px', display: 'grid', gap: '6px' }}>
           {layout.map(section => {
-            const playersInSection = players.filter(p => section.roles.includes(p.roleShort || ''));
+            // Filtra os jogadores baseado se a seção mapeia goleiro nativo ou as posições de linha normais
+            const playersInSection = section.isGK 
+              ? playersList.filter(p => p.player.isGoalkeeper)
+              : playersList.filter(p => section.roles.includes(p.roleShort || ''));
+
             return (
-              <div key={section.area} style={{ display: 'flex', flexDirection: 'column', gap: '1px', padding: '4px 8px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', minHeight: '32px', alignItems: 'center', textAlign: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{section.label}</span>
+              <div key={section.area} style={{ display: 'flex', flexDirection: 'column', gap: '1px', padding: '4px 8px', background: section.isGK ? 'rgba(0, 150, 255, 0.1)' : 'rgba(255,255,255,0.05)', borderRadius: '8px', minHeight: '32px', alignItems: 'center', textAlign: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '0.62rem', fontWeight: 700, color: section.isGK ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{section.label}</span>
                 <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
                   {playersInSection.length > 0 ? playersInSection.map(p => p.player.name).join(', ') : '—'}
                 </span>
@@ -165,6 +181,26 @@ export function SimulationTab() {
           )}
         </div>
 
+        {/* ALERTA DE EQUIPES DESEQUILIBRADAS (Equilibrium > 100) */}
+        {results.length > 0 && currentSimulation && isImbalanced && (
+          <div style={{
+            marginBottom: '20px',
+            padding: '16px',
+            background: 'rgba(255, 165, 0, 0.1)',
+            border: '1px solid var(--star-active)',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            color: 'var(--star-active)'
+          }}>
+            <AlertTriangle size={22} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: '0.92rem', lineHeight: '1.4' }}>
+              <strong>Aviso de Equilíbrio:</strong> Os jogadores cadastrados atualmente não são os ideais para a montagem de um time equilibrado neste cenário. Recomendamos cadastrar mais goleiros ou meias para refinar os potes técnicos.
+            </span>
+          </div>
+        )}
+
         {results.length > 0 && currentSimulation && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -211,9 +247,7 @@ export function SimulationTab() {
                     </div>
                   </div>
                   
-                  {/* MODIFICADO: Adicionado 'justifyContent: 'space-between'' e 'gap: '16px'' para gerenciar a distância dinâmica entre a lista e o campinho */}
                   <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'space-between', gap: '16px' }}>
-                    
                     {/* Lista de Jogadores Titulares */}
                     <div style={{ flex: '0 1 auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {team.players.map((tp, idx) => (
@@ -235,7 +269,7 @@ export function SimulationTab() {
                               )}
                             </div>
                             
-                            {/* Linha 2: OVR (Exclusiva) */}
+                            {/* Linha 2: OVR */}
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                                 OVR: {Math.round((tp.roleScore / 6) * 100)}
@@ -254,11 +288,11 @@ export function SimulationTab() {
                       ))}
                     </div>
 
-                    {/* Campinho tático renderizado compacto e alinhado corretamente */}
+                    {/* Campinho tático */}
                     {renderFieldMap(team.players)}
                   </div>
 
-                  {/* AJUSTADO: Seção do Banco trazendo a nova informação do benchOverall */}
+                  {/* Seção do Banco */}
                   {team.bench && team.bench.length > 0 && (
                     <div style={{ marginTop: '14px', padding: '10px 0 0 0', borderTop: '1px solid var(--border-color)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -296,9 +330,17 @@ export function SimulationTab() {
           </div>
         )}
         
+        {/* MENSAGEM DE ERRO AMIGÁVEL QUANDO NÃO HÁ COMBINAÇÕES DO MOTOR */}
         {results.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '40px' }}>
-            <p>Não foi possível gerar um balanceamento com os critérios selecionados. Verifique as configurações de formação dos times.</p>
+          <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', borderColor: 'var(--danger)', marginTop: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', color: 'var(--danger)' }}>
+              <AlertTriangle size={32} />
+            </div>
+            <h3 style={{ color: 'var(--danger)', marginBottom: '12px', marginTop: 0 }}>⚠️ Nenhuma escalação viável encontrada</h3>
+            <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', maxWidth: '520px', margin: '0 auto', fontSize: '0.92rem' }}>
+              Não há combinações de jogadores válidos suficientes para preencher estritamente as vagas táticas exigidas pelo esquema de linha. 
+              <strong> Por favor, cadastre ou ative mais meias ou goleiros para viabilizar as equipes.</strong>
+            </p>
           </div>
         )}
 

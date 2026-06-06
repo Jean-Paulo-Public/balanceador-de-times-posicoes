@@ -107,7 +107,6 @@ const Formations: Record<'EQUILIBRADA' | 'OFENSIVA' | 'DEFENSIVA', FormationSlot
   ]
 };
 
-// Interface estendida localmente para armazenar os novos metadados de ordenação interna
 interface ExtendedSimulationResult extends SimulationResult {
   benchToTitularDiff: number;
   benchEquilibrium: number;
@@ -192,20 +191,8 @@ export const generateTeams = (
   };
 
   for (let iter = 0; iter < numSimulations; iter++) {
-    const linePool = pool.filter(p => !p.isGoalkeeper).sort(() => Math.random() - 0.5);
-    const gkPool = pool.filter(p => p.isGoalkeeper).sort(() => Math.random() - 0.5);
-
-    const availablePlayers = [...linePool, ...gkPool];
-    const activeLinePlayers = availablePlayers.splice(0, baseFieldPlayersNeeded);
-    let dynamicGkReservoir = [...availablePlayers];
-
-    const teamsWithGoalkeeper: number[] = [];
-    if (!neverScaleGoalkeepers && dynamicGkReservoir.length > 0) {
-      const numGoalkeepersToAssign = Math.min(dynamicGkReservoir.length, numTeams);
-      for (let i = 0; i < numGoalkeepersToAssign; i++) {
-        teamsWithGoalkeeper.push(i);
-      }
-    }
+    // Clonamos o pool a cada simulação para controle estrito e manipulação pura
+    const workingPool = [...pool].sort(() => Math.random() - 0.5);
 
     const getNoise = () => (Math.random() - 0.5) * 1.5;
     const getTeamCurrentScore = (team: { players: Team['players'] }) =>
@@ -244,12 +231,21 @@ export const generateTeams = (
       team: { players: Team['players']; reqs: Array<{ id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; originalIndex: number; }> },
       req: { id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; originalIndex: number; }
     ) => {
-      if (activeLinePlayers.length === 0) return;
-      const playerIndex = selectBestPlayerIndex(req, activeLinePlayers);
-      if (playerIndex === -1) return;
-      const player = activeLinePlayers.splice(playerIndex, 1)[0];
+      if (workingPool.length === 0) return false;
+      
+      // Filtra tirando goleiros nativos de linha para preservar a escalação limpa da linha
+      const lineOptions = workingPool.filter(p => !p.isGoalkeeper);
+      const playerIndexInOptions = selectBestPlayerIndex(req, lineOptions);
+      
+      if (playerIndexInOptions === -1) return false;
+      
+      const chosenPlayer = lineOptions[playerIndexInOptions];
+      const actualIdxInWorkingPool = workingPool.findIndex(p => p.id === chosenPlayer.id);
+      
+      workingPool.splice(actualIdxInWorkingPool, 1);
       team.reqs = team.reqs.filter((r) => r.originalIndex !== req.originalIndex);
-      teamAddPlayer(team, player, req, req.allowedOriginalPositions.includes(player.position) ? 0 : 1, false);
+      teamAddPlayer(team, chosenPlayer, req, req.allowedOriginalPositions.includes(chosenPlayer.position) ? 0 : 1, false);
+      return true;
     };
 
     const isAttackRole = (reqId: string) => {
@@ -267,22 +263,11 @@ export const generateTeams = (
       return lower.includes('volante') || lower.includes('meia defensivo');
     };
 
-    const assignRolesByPredicate = (predicate: (id: string) => boolean) => {
-      const pending = teamsData
-        .flatMap((team) => team.reqs.filter((req) => predicate(req.id)).map((req) => ({ team, req })));
-      pending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
-      for (const { team, req } of pending) {
-        assignPlayerToRole(team, req);
-      }
-    };
-
     const teamsData = Array.from({ length: numTeams }, (_, i) => {
       const teamFormation = Array.isArray(formationType) ? (formationType[i] ?? 'QUALQUER') : formationType;
       const fKey = teamFormation === 'QUALQUER'
         ? formationKeys[Math.floor(Math.random() * formationKeys.length)]
         : teamFormation as keyof typeof Formations;
-
-      const reqs = [...Formations[fKey]].map((r, idx) => ({ ...r, originalIndex: idx }));
 
       return {
         id: i + 1,
@@ -291,157 +276,123 @@ export const generateTeams = (
         overall: 0,
         benchOverall: 0,
         players: [] as Team['players'],
-        reqs,
-        needsGoalkeeper: teamsWithGoalkeeper.includes(i),
+        reqs: [...Formations[fKey]].map((r, idx) => ({ ...r, originalIndex: idx })),
         bench: [] as Team['players']
       };
     });
 
-    assignRolesByPredicate(isAttackRole);
+    // Fluxo estruturado de preenchimento dos 6 de linha respeitando critérios táticos
+    let validGeneration = true;
 
-    const defenderTeams = teamsData
-      .filter((team) => team.reqs.some((req) => isDefenderRole(req.id)))
-      .sort((a, b) => getTeamCurrentScore(a) - getTeamCurrentScore(b));
-    for (const team of defenderTeams) {
-      const defenderReq = team.reqs.find((req) => isDefenderRole(req.id));
-      if (defenderReq) assignPlayerToRole(team, defenderReq);
+    // 1. Atacantes e Meias Ofensivos
+    const attackPending = teamsData.flatMap(t => t.reqs.filter(r => isAttackRole(r.id)).map(r => ({ team: t, req: r })));
+    attackPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
+    for (const { team, req } of attackPending) {
+      if (!assignPlayerToRole(team, req)) { validGeneration = false; break; }
+    }
+    if (!validGeneration) continue;
+
+    // 2. Defensores Principais
+    const defenderPending = teamsData.flatMap(t => t.reqs.filter(r => isDefenderRole(r.id)).map(r => ({ team: t, req: r })));
+    defenderPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
+    for (const { team, req } of defenderPending) {
+      if (!assignPlayerToRole(team, req)) { validGeneration = false; break; }
+    }
+    if (!validGeneration) continue;
+
+    // 3. Volantes/Meias Defensivos
+    const defMidPending = teamsData.flatMap(t => t.reqs.filter(r => isDefensiveMidRole(r.id)).map(r => ({ team: t, req: r })));
+    defMidPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
+    for (const { team, req } of defMidPending) {
+      if (!assignPlayerToRole(team, req)) { validGeneration = false; break; }
+    }
+    if (!validGeneration) continue;
+
+    // 4. Qualquer slot restante de linha
+    const remainingPending = teamsData.flatMap(t => t.reqs.map(r => ({ team: t, req: r })));
+    for (const { team, req } of remainingPending) {
+      if (!assignPlayerToRole(team, req)) { validGeneration = false; break; }
+    }
+    if (!validGeneration) continue;
+
+    // CRITÉRIO DE SALVAGUARDA: Garante matematicamente 6 jogadores de linha escalados por time
+    const missingLinePlayers = teamsData.some(t => t.players.length < 6);
+    if (missingLinePlayers) continue;
+
+    // Alocação de Goleiros (Regra: Prefira não escalar goleiro se faltar jogadores, mantendo a linha intacta)
+    if (!neverScaleGoalkeepers) {
+      for (let t = 0; t < numTeams; t++) {
+        if (workingPool.length === 0) break; // Sem peças suficientes? O time da simulação fica sem goleiro, mas válido na linha.
+
+        let chosenGkPlayer: Player | null = null;
+        let gkIdx = workingPool.findIndex(p => p.isGoalkeeper);
+        let forceLowGkStats = false;
+
+        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO');
+        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR');
+        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol);
+        if (gkIdx === -1) {
+          gkIdx = workingPool.findIndex(p => p.position === 'MEIA_DEFENSIVO');
+          if (gkIdx !== -1) forceLowGkStats = true;
+        }
+        if (gkIdx === -1 && workingPool.length > 0) gkIdx = 0;
+
+        if (gkIdx !== -1) {
+          chosenGkPlayer = workingPool.splice(gkIdx, 1)[0];
+          const gkReq = {
+            id: 'Goleiro',
+            allowedOriginalPositions: ['DEFENSOR', 'MEIA_DEFENSIVO', 'MEIA_OFENSIVO', 'ATACANTE'] as Player['position'][],
+            calcScore: scoreGoalkeeper,
+          };
+          teamAddPlayer(teamsData[t], chosenGkPlayer, gkReq, chosenGkPlayer.isGoalkeeper ? 0 : 1, true, forceLowGkStats);
+        }
+      }
     }
 
-    assignRolesByPredicate(isDefensiveMidRole);
-    assignRolesByPredicate((id) => !isAttackRole(id) && !isDefenderRole(id) && !isDefensiveMidRole(id));
-
-    const totalActiveDefenders = pool.filter(p => p.position === 'DEFENSOR').length;
-    const maxDefendersInGkStage2 = Math.max(0, numTeams - totalActiveDefenders);
-    let defenderCountInGkStage2 = 0;
-
-    for (let t = 0; t < numTeams; t++) {
-      if (!teamsData[t].needsGoalkeeper) continue;
-
-      let chosenPlayer: Player | null = null;
-      let playerIdx = -1;
-      let forceLowGkStats = false;
-
-      playerIdx = dynamicGkReservoir.findIndex(p => p.isGoalkeeper);
-      
-      if (playerIdx === -1) {
-        playerIdx = dynamicGkReservoir.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO');
-      }
-      if (playerIdx === -1 && defenderCountInGkStage2 < maxDefendersInGkStage2) {
-        playerIdx = dynamicGkReservoir.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR');
-        if (playerIdx !== -1) defenderCountInGkStage2++;
-      }
-      if (playerIdx === -1) {
-        playerIdx = dynamicGkReservoir.findIndex(p => p.stats.gk_pegas_no_gol && p.position !== 'MEIA_DEFENSIVO' && p.position !== 'DEFENSOR');
-      }
-      if (playerIdx === -1) {
-        playerIdx = dynamicGkReservoir.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR');
-      }
-      if (playerIdx === -1) {
-        playerIdx = dynamicGkReservoir.findIndex(p => !p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO');
-        if (playerIdx !== -1) forceLowGkStats = true;
-      }
-
-      if (playerIdx !== -1) {
-        chosenPlayer = dynamicGkReservoir.splice(playerIdx, 1)[0];
-      }
-
-      if (chosenPlayer) {
-        const req = {
-          id: 'Goleiro',
-          allowedOriginalPositions: ['DEFENSOR', 'MEIA_DEFENSIVO', 'MEIA_OFENSIVO', 'ATACANTE'] as Player['position'][],
-          calcScore: scoreGoalkeeper,
-        };
-        teamAddPlayer(teamsData[t], chosenPlayer, req, chosenPlayer.isGoalkeeper ? 0 : 1, true, forceLowGkStats);
-      }
-    }
-
+    // Distribuição de reservas do reservatório restante no Banco
     let currentTeamBenchIdx = 0;
-    const remainingLinePool: Player[] = [];
-
-    while (dynamicGkReservoir.length > 0) {
-      const player = dynamicGkReservoir.shift()!;
+    while (workingPool.length > 0) {
+      const player = workingPool.shift()!;
       const targetTeam = teamsData[currentTeamBenchIdx % numTeams];
-
       const role = player.position === 'ATACANTE' ? 'Atacante'
                  : player.position === 'MEIA_OFENSIVO' ? 'Meia Ofensivo'
                  : player.position === 'MEIA_DEFENSIVO' ? 'Meia Defensivo' : 'Defensor';
 
-      if (isImprovisationAllowed(player.position, role)) {
-        const score = getLineScoreByPosition(player, role);
-        const labels = getRoleLabels(player, role, false, false);
+      const score = getLineScoreByPosition(player, role);
+      const labels = getRoleLabels(player, role, false, false);
 
-        targetTeam.bench.push({
-          player,
-          assignedRole: role,
-          roleScore: score,
-          improvisationPenalty: 0,
-          ...labels
-        });
-        currentTeamBenchIdx++;
-      } else {
-        remainingLinePool.push(player);
-      }
-    }
-
-    if (remainingLinePool.length > 0) {
-      remainingLinePool.sort((a, b) => getLineScoreByPosition(b) - getLineScoreByPosition(a));
-
-      remainingLinePool.forEach((player) => {
-        const targetTeam = teamsData.reduce((prev, curr) => {
-          if (curr.bench.length !== prev.bench.length) {
-            return curr.bench.length < prev.bench.length ? curr : prev;
-          }
-          const prevBenchAvg = prev.bench.length ? prev.bench.reduce((s, p) => s + p.roleScore, 0) / prev.bench.length : 0;
-          const currBenchAvg = curr.bench.length ? curr.bench.reduce((s, p) => s + p.roleScore, 0) / curr.bench.length : 0;
-          return currBenchAvg < prevBenchAvg ? curr : prev;
-        });
-
-        const role = 'Reserva Forçado';
-        const rawLineScore = getLineScoreByPosition(player);
-        const labels = { roleShort: 'RES', roleLabel: `${posToLabel(player.position)} (Banco Extra)` };
-
-        targetTeam.bench.push({
-          player,
-          assignedRole: role,
-          roleScore: rawLineScore,
-          improvisationPenalty: 0,
-          ...labels
-        });
+      targetTeam.bench.push({
+        player,
+        assignedRole: role,
+        roleScore: score,
+        improvisationPenalty: 0,
+        ...labels
       });
+      currentTeamBenchIdx++;
     }
 
-    // Acumuladores para as métricas da nova camada interna
+    // Processamento de médias de Overalls
     let benchToTitularDiff = 0;
-
     teamsData.forEach(team => {
-      let sumScores = 0;
-      let totalPenalty = 0;
-      
-      team.players.forEach(tp => {
-        sumScores += tp.roleScore;
-        totalPenalty += tp.improvisationPenalty;
-      });
+      const sumScores = team.players.reduce((s, tp) => s + tp.roleScore, 0);
+      const totalPenalty = team.players.reduce((s, tp) => s + tp.improvisationPenalty, 0);
       
       const avgScore = team.players.length ? sumScores / team.players.length : 1;
       let overall = Math.round((avgScore / 6) * 100);
       overall -= totalPenalty * 3;
-      overall = Math.max(0, Math.min(100, overall));
-      team.overall = overall;
+      team.overall = Math.max(0, Math.min(100, overall));
 
       const benchScoresSum = team.bench.reduce((sum, bp) => sum + bp.roleScore, 0);
       const avgBenchScore = team.bench.length ? benchScoresSum / team.bench.length : 0;
       team.benchOverall = Math.max(0, Math.min(100, Math.round((avgBenchScore / 6) * 100)));
 
-      // Camada interna 2: Diferença absoluta entre o banco e o titular do próprio time
       benchToTitularDiff += Math.abs(team.overall - team.benchOverall);
     });
 
-    // Camada interna 3: Pontuação de equilíbrio dos bancos entre si (Fórmula do quadrado da diferença)
     let benchEquilibrium = 0;
     for (let i = 0; i < teamsData.length; i++) {
       for (let j = i + 1; j < teamsData.length; j++) {
-        const diffBench = teamsData[i].benchOverall - teamsData[j].benchOverall;
-        benchEquilibrium += diffBench * diffBench;
+        benchEquilibrium += Math.pow(teamsData[i].benchOverall - teamsData[j].benchOverall, 2);
       }
     }
 
@@ -453,8 +404,7 @@ export const generateTeams = (
     let equilibrium = 0;
     for (let i = 0; i < overalls.length; i++) {
       for (let j = i + 1; j < overalls.length; j++) {
-        const diff = overalls[i] - overalls[j];
-        equilibrium += diff * diff;
+        equilibrium += Math.pow(overalls[i] - overalls[j], 2);
       }
     }
 
@@ -472,32 +422,16 @@ export const generateTeams = (
       scoreDeviation: deviation,
       totalImprov: totalImprov,
       equilibrium,
-      benchToTitularDiff, // Acoplado internamente para o desempate
-      benchEquilibrium    // Acoplado internamente para o desempate
+      benchToTitularDiff,
+      benchEquilibrium
     });
   }
 
-  const isAllQualquer = Array.isArray(formationType) && formationType.length === numTeams && formationType.every(f => f === 'QUALQUER');
-  let finalResults = results;
-
-  if (isAllQualquer) {
-    const fixedFormations: FormationType[] = ['EQUILIBRADA', 'OFENSIVA', 'DEFENSIVA'];
-    const fixedResults = fixedFormations
-      .map((fixed) => {
-        const fixedFormationArray = Array(numTeams).fill(fixed) as FormationType[];
-        const fixedSimulations = generateTeams(players, fixedFormationArray, numTeams, Math.max(300, Math.floor(numSimulations / 3)), neverScaleGoalkeepers);
-        return fixedSimulations.length > 0 ? fixedSimulations[0] : null;
-      })
-      .filter((item): item is SimulationResult => item !== null);
-
-    finalResults = [...results, ...fixedResults as ExtendedSimulationResult[]];
-  }
-
-  finalResults.sort((a, b) => {
+  // Ordenação inteligente baseada nos Tiers e critérios de desempate
+  results.sort((a, b) => {
     const eqA = a.equilibrium ?? 0;
     const eqB = b.equilibrium ?? 0;
 
-    // Regra dos Tiers (Inalterada)
     let tierA = 3;
     if (eqA < 10 && a.totalImprov === 0) tierA = 1;
     else if (eqA < 50) tierA = 2;
@@ -507,25 +441,12 @@ export const generateTeams = (
     else if (eqB < 50) tierB = 2;
 
     if (tierA !== tierB) return tierA - tierB;
-    if (tierA === 2 && a.totalImprov !== b.totalImprov) return a.totalImprov - b.totalImprov;
-
-    // Ordenação Principal por Equilíbrio (Inalterada)
     if (eqA !== eqB) return eqA - eqB;
-
-    // --- NOVA CAMADA DE ORDENAÇÃO INTERNA (CRITÉRIOS DE DESEMPATE CASO EQUILIBRIUM SEJA IGUAL) ---
-    
-    // Critério 1: Menos improvisações no cenário completo
     if (a.totalImprov !== b.totalImprov) return a.totalImprov - b.totalImprov;
-
-    // Critério 2: Menor diferença somada entre o OVR do banco e seu respectivo titular
     if (a.benchToTitularDiff !== b.benchToTitularDiff) return a.benchToTitularDiff - b.benchToTitularDiff;
-
-    // Critério 3: Menor pontuação de equilíbrio (variância quadrada) entre as notas dos bancos
-    if (a.benchEquilibrium !== b.benchEquilibrium) return a.benchEquilibrium - b.benchEquilibrium;
-
-    // Critério de salvaguarda padrão
+    
     return a.scoreDeviation - b.scoreDeviation;
   });
 
-  return finalResults;
+  return results;
 };
