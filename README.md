@@ -21,6 +21,13 @@ Se o aplicativo detectar que não há nenhum jogador cadastrado, ele adiciona au
 
 Cada jogador recebe uma avaliação de 2 a 4 estrelas aleatória para facilitar o primeiro cadastro.
 
+## Exportar e importar jogadores
+
+- Use o botão "Exportar jogadores (JSON)" para salvar o arquivo localmente.
+- Use o botão "Importar jogadores (JSON)" para carregar um arquivo de jogadores salvo.
+- O importador aceita tanto um array de jogadores quanto um objeto com o campo `players`.
+- Campos extras são preservados para manter flexibilidade caso novos atributos sejam adicionados.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

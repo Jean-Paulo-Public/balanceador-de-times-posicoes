@@ -102,6 +102,7 @@ interface PlayerState {
   deletePlayer: (id: string) => void;
   togglePlayerActive: (id: string) => void;
   setNeverScaleGoalkeepers: (value: boolean) => void;
+  setPlayers: (players: Player[]) => void;
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -131,6 +132,7 @@ export const usePlayerStore = create<PlayerState>()(
         })),
       setNeverScaleGoalkeepers: (value) =>
         set(() => ({ neverScaleGoalkeepers: value })),
+      setPlayers: (players) => set(() => ({ players })),
     }),
     {
       name: 'balanceador-times-storage',
