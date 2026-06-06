@@ -28,6 +28,12 @@ export interface PlayerStats {
 
   // Atributo geral para todos os jogadores
   geral_recomposicaoVelocidadeVigor?: number;
+
+  // Atributos de Goleiro
+  gk_posicionamentoSaida?: number;
+  gk_defesaReflexo?: number;
+  gk_posicionamentoAereo?: number;
+  gk_saidaPrecisa?: number;
 }
 
 export interface Player {
@@ -47,7 +53,7 @@ export interface Team {
   name: string;
   overall: number;
   tacticalSystem?: string;
-  players: {  
+  players: {
     player: Player;
     assignedRole: string;
     improvisationPenalty: number;
@@ -56,12 +62,20 @@ export interface Team {
     roleShort?: string; // Short code (DEF, MD, MEI, MA, ATA, GK)
     isCrownFallback?: boolean;
   }[];
+  bench?: {
+    player: Player;
+    assignedRole: string;
+    improvisationPenalty: number;
+    roleScore: number;
+    roleLabel?: string;
+    roleShort?: string;
+    isCrownFallback?: boolean;
+  }[];
 }
 
 export interface SimulationResult {
   id: string;
   teams: Team[];
-  bench: Player[];
   scoreDeviation: number; // Menor é melhor (mais equilibrado)
   totalImprov: number;
 }

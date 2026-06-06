@@ -25,6 +25,10 @@ const defaultStats: PlayerStats = {
   ata_sec_dribleArrancada: 3,
   ata_sec_passeGolTabela: 3,
   geral_recomposicaoVelocidadeVigor: 3,
+  gk_posicionamentoSaida: 3,
+  gk_defesaReflexo: 3,
+  gk_posicionamentoAereo: 3,
+  gk_saidaPrecisa: 3,
 };
 
 export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
@@ -71,6 +75,8 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     return (sum / keys.length).toFixed(1);
   };
 
+  const allStatsAreDefault = Object.values(stats).every((value) => value === 3);
+
   return (
     <div className="glass-panel animate-fade-in" style={{ padding: '24px', marginTop: '16px', marginBottom: '32px' }}>
       <h2 style={{ color: 'var(--primary)', marginBottom: '20px' }}>
@@ -101,6 +107,14 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
           </label>
         </div>
 
+        {Object.values(stats).some((v) => v === 5) && (
+          <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255,200,0,0.1)', borderRadius: '8px', border: '1px solid rgba(255,200,0,0.3)' }}>
+            <p style={{ fontSize: '0.9rem', color: '#FFD700', margin: 0, lineHeight: '1.4' }}>
+              ⚠️ <strong>Observação:</strong> Você atribuiu 5 estrelas a um ou mais atributos. Reserve 5 estrelas apenas para jogadores praticamente perfeitos naquilo. Use 4 estrelas para muito bom.
+            </p>
+          </div>
+        )}
+
         <div className="input-group">
           <label>Posição Principal</label>
           <select 
@@ -121,6 +135,11 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
         </div>
 
         <div style={{ borderTop: '1px solid var(--border-color)', margin: '20px 0', paddingTop: '20px' }}>
+          {allStatsAreDefault && (
+            <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(0, 123, 255, 0.08)', border: '1px solid rgba(0, 123, 255, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
+              Definir estrelas em todos os atributos
+            </div>
+          )}
           <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Atributos do Jogador</h3>
           <div style={{ marginBottom: '20px' }}>
             <StarRating
@@ -195,6 +214,32 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
                 <StarRating label="Passe para gol / Tabela" value={stats.ata_sec_passeGolTabela!} onChange={v => updateStat('ata_sec_passeGolTabela', v)} />
               </div>
             </>
+          )}
+
+          {isGoalkeeper && (
+            <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(0,100,200,0.2)', borderRadius: '8px', border: '1px solid rgba(0,150,255,0.3)' }}>
+              <h4 style={{ color: '#00A8FF', marginBottom: '8px' }}>⚽ Atributos de Goleiro</h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4' }}>
+                Avalie os atributos específicos de goleiro. Use escala de 1-5 estrelas, sendo 5 para praticamente perfeito naquilo.
+              </p>
+              <StarRating label="Defesa / Reflexo" value={stats.gk_defesaReflexo!} onChange={v => updateStat('gk_defesaReflexo', v)} />
+              <StarRating label="Saída de bola precisa / Passe" value={stats.gk_saidaPrecisa!} onChange={v => updateStat('gk_saidaPrecisa', v)} />
+              <StarRating label="Posicionamento em contra ataques / Saída na bola" value={stats.gk_posicionamentoSaida!} onChange={v => updateStat('gk_posicionamentoSaida', v)} />              
+              <StarRating label="Posicionamento Aéreo / Domínio da área" value={stats.gk_posicionamentoAereo!} onChange={v => updateStat('gk_posicionamentoAereo', v)} />              
+            </div>
+          )}
+
+          {position === 'DEFENSOR' && !isGoalkeeper && (
+            <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(0,100,200,0.15)', borderRadius: '8px', border: '1px solid rgba(0,150,255,0.2)' }}>
+              <h4 style={{ color: '#00A8FF', marginBottom: '8px' }}>⚽ Atributos de Goleiro (Improviso)</h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4' }}>
+                Avalie os atributos de goleiro para quando o defensor precisar improvisar na posição.
+              </p>
+              <StarRating label="Defesa / Reflexo" value={stats.gk_defesaReflexo!} onChange={v => updateStat('gk_defesaReflexo', v)} />
+              <StarRating label="Saída de bola precisa / Passe" value={stats.gk_saidaPrecisa!} onChange={v => updateStat('gk_saidaPrecisa', v)} />
+              <StarRating label="Posicionamento em contra ataques / Saída na bola" value={stats.gk_posicionamentoSaida!} onChange={v => updateStat('gk_posicionamentoSaida', v)} />                            
+              <StarRating label="Posicionamento Aéreo / Domínio da área" value={stats.gk_posicionamentoAereo!} onChange={v => updateStat('gk_posicionamentoAereo', v)} />              
+            </div>
           )}
         </div>
 

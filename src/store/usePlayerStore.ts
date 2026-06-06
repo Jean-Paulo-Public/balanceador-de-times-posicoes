@@ -19,6 +19,10 @@ const defaultStats: PlayerStats = {
   ata_sec_dribleArrancada: 3,
   ata_sec_passeGolTabela: 3,
   geral_recomposicaoVelocidadeVigor: 3,
+  gk_posicionamentoSaida: 3,
+  gk_defesaReflexo: 3,
+  gk_posicionamentoAereo: 3,
+  gk_saidaPrecisa: 3,
 };
 
 const normalizePlayerStats = (player: Player): Player => ({

@@ -241,21 +241,21 @@ export function SimulationTab() {
                       {renderFieldMap(team.players)}
                     </div>
                   </div>
+
+                  {team.bench && team.bench.length > 0 && (
+                    <div style={{ marginTop: '16px', padding: '12px', borderTop: '1px solid var(--border-color)' }}>
+                      <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: 'var(--text-muted)' }}>Banco por time</h4>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {team.bench.map((bp, idx) => (
+                          <span key={idx} style={{ background: 'rgba(255,255,255,0.08)', padding: '4px 10px', borderRadius: '10px', fontSize: '0.85rem' }}>
+                            {bp.player.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{bp.roleLabel || bp.assignedRole}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
-
-              {currentSimulation.bench.length > 0 && (
-                <div className="glass-panel" style={{ padding: '16px', border: '1px dashed var(--text-muted)' }}>
-                  <h3 style={{ margin: 0, marginBottom: '12px', color: 'var(--text-muted)' }}>Time de fora (Banco)</h3>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {currentSimulation.bench.map(p => (
-                      <span key={p.id} style={{ background: 'rgba(0,0,0,0.3)', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85rem' }}>
-                        {p.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({p.position === 'MEIA_OFENSIVO' ? 'Meia' : p.position === 'MEIA_DEFENSIVO' ? 'Meia' : p.position === 'DEFENSOR' ? 'Defensor' : 'Atacante'})</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
