@@ -49,6 +49,17 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     setStats(prev => ({ ...prev, [key]: value }));
   };
 
+  // Função para atualizar todos os atributos simultaneamente
+  const updateAllStats = (value: number) => {
+    setStats(prev => {
+      const newStats = { ...prev };
+      (Object.keys(newStats) as (keyof PlayerStats)[]).forEach(key => {
+        newStats[key] = value;
+      });
+      return newStats;
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -136,11 +147,16 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
 
         <div style={{ borderTop: '1px solid var(--border-color)', margin: '20px 0', paddingTop: '20px' }}>
           {allStatsAreDefault && (
-            <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(0, 123, 255, 0.08)', border: '1px solid rgba(0, 123, 255, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
+            <div style={{ marginBottom: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(0, 123, 255, 0.08)', border: '1px solid rgba(0, 123, 255, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
               Definir estrelas em todos os atributos
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4' }}>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4', fontWeight: 400 }}>
                 para atribuição rápida, depois ajuste de acordo com cada atributo ( evite usar mais de 5 estrelas )       
               </p>  
+              <StarRating 
+                label="" 
+                value={3} 
+                onChange={v => updateAllStats(v)} 
+              />
             </div>            
           )}
           <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Atributos do Jogador</h3>
@@ -243,7 +259,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
               </p>
               <StarRating label="Defesa / Reflexo" value={stats.gk_defesaReflexo!} onChange={v => updateStat('gk_defesaReflexo', v)} />
               <StarRating label="Saída de bola precisa / Passe" value={stats.gk_saidaPrecisa!} onChange={v => updateStat('gk_saidaPrecisa', v)} />
-              <StarRating label="Posicionamento em contra ataques / Saída na bola" value={stats.gk_posicionamentoSaida!} onChange={v => updateStat('gk_posicionamentoSaida', v)} />                            
+              <StarRating label="Posicionamento em contra ataques / Saída na bola" value={stats.gk_posicionamentoSaida!} onChange={v => updateStat('gk_posicionamentoSaida', v)} />                                                    
               <StarRating label="Posicionamento Aéreo / Domínio da área" value={stats.gk_posicionamentoAereo!} onChange={v => updateStat('gk_posicionamentoAereo', v)} />              
             </div>
           )}
