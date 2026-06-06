@@ -138,10 +138,16 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
           {allStatsAreDefault && (
             <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(0, 123, 255, 0.08)', border: '1px solid rgba(0, 123, 255, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
               Definir estrelas em todos os atributos
-            </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4' }}>
+                para atribuição rápida, depois ajuste de acordo com cada atributo ( evite usar mais de 5 estrelas )       
+              </p>  
+            </div>            
           )}
           <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Atributos do Jogador</h3>
           <div style={{ marginBottom: '20px' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4' }}>
+              Prefira escolher entre 1-5 estrelas, sendo 5.5 e 6 para quando o jogador for praticamente perfeito naquilo.
+            </p>            
             <StarRating
               label="Recomposição defensiva / Velocidade / Vigor Físico"
               value={stats.geral_recomposicaoVelocidadeVigor!}
@@ -220,7 +226,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
             <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(0,100,200,0.2)', borderRadius: '8px', border: '1px solid rgba(0,150,255,0.3)' }}>
               <h4 style={{ color: '#00A8FF', marginBottom: '8px' }}>⚽ Atributos de Goleiro</h4>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4' }}>
-                Avalie os atributos específicos de goleiro. Use escala de 1-5 estrelas, sendo 5 para praticamente perfeito naquilo.
+                Avalie os atributos específicos de goleiro.
               </p>
               <StarRating label="Defesa / Reflexo" value={stats.gk_defesaReflexo!} onChange={v => updateStat('gk_defesaReflexo', v)} />
               <StarRating label="Saída de bola precisa / Passe" value={stats.gk_saidaPrecisa!} onChange={v => updateStat('gk_saidaPrecisa', v)} />
