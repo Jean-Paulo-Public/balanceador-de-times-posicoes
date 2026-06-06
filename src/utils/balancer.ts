@@ -19,7 +19,6 @@ const scoreMeiaDefensivo = (p: Player) => {
 
 const scoreMeia = (p: Player) => {
   if (p.position === 'MEIA_DEFENSIVO' || p.position === 'MEIA_OFENSIVO') {
-    // REGRA: Média dos atributos base com seus principais e secundários (sem redutor de improviso)
     const off = getAvg([p.stats.mei_of_finalizacao, p.stats.mei_of_dribleArrancada, p.stats.mei_of_passeGolTabela, p.stats.geral_recomposicaoVelocidadeVigor]);
     const def = getAvg([p.stats.mei_def_sairPressao, p.stats.mei_def_posicionamentoMarcacao, p.stats.mei_def_interceptacao, p.stats.geral_recomposicaoVelocidadeVigor]);
     const base = getAvg([p.stats.mei_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);
@@ -61,7 +60,7 @@ const isImprovisationAllowed = (playerPosition: Player['position'], targetRoleId
   const role = targetRoleId.toLowerCase();
   
   if (role.includes('defensor')) {
-    return playerPosition === 'MEIA_DEFENSIVO';
+    return playerPosition === 'MEIA_DEFENSIVO' || playerPosition === 'DEFENSOR';
   }
   if (role.includes('volante') || role.includes('meia defensivo')) {
     return playerPosition === 'MEIA_OFENSIVO';
@@ -72,7 +71,6 @@ const isImprovisationAllowed = (playerPosition: Player['position'], targetRoleId
   if (role.includes('atacante')) {
     return playerPosition === 'MEIA_OFENSIVO';
   }
-  // Se o destino for uma vaga genérica de "Meia" (MEI), volantes e meias ofensivos não são considerados improvisos
   if (role === 'meia' || role.includes('meia 1') || role.includes('meia 2')) {
     if (playerPosition === 'MEIA_DEFENSIVO' || playerPosition === 'MEIA_OFENSIVO') return true;
   }
@@ -149,6 +147,7 @@ export const generateTeams = (
     if (lower.includes('goleiro') || isGoalkeeperRole) {
       return { roleShort: 'GK', roleLabel: 'Goleiro' };
     }
+
     if (player.position === 'ATACANTE' && lower.includes('meia')) {
       return { roleShort: 'MA', roleLabel: 'Meia Atacante (improvisado)' };
     }
@@ -163,7 +162,6 @@ export const generateTeams = (
       return { roleShort: 'MA', roleLabel: `Meia Atacante${impro ? ' (improvisado)' : ''}` };
     }
     
-    // Tratamento customizado para slots genéricos de Meia (MEI)
     if (lower === 'meia' || lower.includes('meia 1') || lower.includes('meia 2')) {
       const isNativeMid = player.position === 'MEIA_DEFENSIVO' || player.position === 'MEIA_OFENSIVO';
       const actualImpro = isNativeMid ? false : improvised;
@@ -187,7 +185,6 @@ export const generateTeams = (
     forceGkLowStats: boolean = false
   ) => {
     const lowerReq = req.id.toLowerCase();
-    // Se o slot for Meia (MEI) e o jogador for Meia Atacante ou Volante, forçamos o indicador de improviso para 0
     let finalImprovisedPenalty = improvised;
     if ((lowerReq === 'meia' || lowerReq.includes('meia 1') || lowerReq.includes('meia 2')) && 
         (player.position === 'MEIA_DEFENSIVO' || player.position === 'MEIA_OFENSIVO')) {
@@ -215,6 +212,55 @@ export const generateTeams = (
     const getTeamCurrentScore = (team: { players: Team['players'] }) =>
       team.players.reduce((sum, tp) => sum + tp.roleScore, 0);
 
+    const teamsData = Array.from({ length: numTeams }, (_, i) => {
+      const teamFormation = Array.isArray(formationType) ? (formationType[i] ?? 'QUALQUER') : formationType;
+      const fKey = teamFormation === 'QUALQUER'
+        ? formationKeys[Math.floor(Math.random() * formationKeys.length)]
+        : teamFormation as keyof typeof Formations;
+
+      return {
+        id: i + 1,
+        name: `Time ${i + 1}`,
+        tacticalSystem: fKey,
+        overall: 0,
+        benchOverall: 0,
+        players: [] as Team['players'],
+        reqs: [...Formations[fKey]].map((r, idx) => ({ ...r, originalIndex: idx })),
+        bench: [] as Team['players']
+      };
+    });
+
+    // 1. ALOCAÇÃO ANTECIPADA DE GOLEIROS TITULARES (Até 1 por time, se houver)
+    if (!neverScaleGoalkeepers) {
+      for (let t = 0; t < numTeams; t++) {
+        if (workingPool.length === 0) break;
+
+        let chosenGkPlayer: Player | null = null;
+        let gkIdx = workingPool.findIndex(p => p.isGoalkeeper);
+        let forceLowGkStats = false;
+
+        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO');
+        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR');
+        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol);
+        if (gkIdx === -1) {
+          gkIdx = workingPool.findIndex(p => p.position === 'MEIA_DEFENSIVO');
+          if (gkIdx !== -1) forceLowGkStats = true;
+        }
+        if (gkIdx === -1 && workingPool.length > 0) gkIdx = 0;
+
+        if (gkIdx !== -1) {
+          chosenGkPlayer = workingPool.splice(gkIdx, 1)[0];
+          const gkReq = {
+            id: 'Goleiro',
+            allowedOriginalPositions: ['DEFENSOR', 'MEIA_DEFENSIVO', 'MEIA_OFENSIVO', 'ATACANTE'] as Player['position'][],
+            calcScore: scoreGoalkeeper,
+          };
+          teamAddPlayer(teamsData[t], chosenGkPlayer, gkReq, (chosenGkPlayer.isGoalkeeper || !chosenGkPlayer.position) ? 0 : 1, true, forceLowGkStats);
+        }
+      }
+    }
+
+    // 2. SISTEMA DE SELEÇÃO E DISTRIBUIÇÃO DA LINHA (Trata goleiros sobressalentes como linhas nativos)
     const selectBestPlayerIndex = (
       req: { id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; },
       sourcePool: Player[]
@@ -250,15 +296,10 @@ export const generateTeams = (
     ) => {
       if (workingPool.length === 0) return false;
       
-      const lineOptions = workingPool.filter(p => !p.isGoalkeeper);
-      const playerIndexInOptions = selectBestPlayerIndex(req, lineOptions);
+      const playerIndexInPool = selectBestPlayerIndex(req, workingPool);
+      if (playerIndexInPool === -1) return false;
       
-      if (playerIndexInOptions === -1) return false;
-      
-      const chosenPlayer = lineOptions[playerIndexInOptions];
-      const actualIdxInWorkingPool = workingPool.findIndex(p => p.id === chosenPlayer.id);
-      
-      workingPool.splice(actualIdxInWorkingPool, 1);
+      const chosenPlayer = workingPool.splice(playerIndexInPool, 1)[0];
       team.reqs = team.reqs.filter((r) => r.originalIndex !== req.originalIndex);
       
       const isAllowedDirectly = req.allowedOriginalPositions.includes(chosenPlayer.position);
@@ -281,27 +322,9 @@ export const generateTeams = (
       return lower.includes('volante') || lower.includes('meia defensivo');
     };
 
-    const teamsData = Array.from({ length: numTeams }, (_, i) => {
-      const teamFormation = Array.isArray(formationType) ? (formationType[i] ?? 'QUALQUER') : formationType;
-      const fKey = teamFormation === 'QUALQUER'
-        ? formationKeys[Math.floor(Math.random() * formationKeys.length)]
-        : teamFormation as keyof typeof Formations;
-
-      return {
-        id: i + 1,
-        name: `Time ${i + 1}`,
-        tacticalSystem: fKey,
-        overall: 0,
-        benchOverall: 0,
-        players: [] as Team['players'],
-        reqs: [...Formations[fKey]].map((r, idx) => ({ ...r, originalIndex: idx })),
-        bench: [] as Team['players']
-      };
-    });
-
     let validGeneration = true;
 
-    // 1. Atacantes e Meias Ofensivos
+    // Distribuição em ondas prioritárias
     const attackPending = teamsData.flatMap(t => t.reqs.filter(r => isAttackRole(r.id)).map(r => ({ team: t, req: r })));
     attackPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
     for (const { team, req } of attackPending) {
@@ -309,7 +332,6 @@ export const generateTeams = (
     }
     if (!validGeneration) continue;
 
-    // 2. Defensores Principais
     const defenderPending = teamsData.flatMap(t => t.reqs.filter(r => isDefenderRole(r.id)).map(r => ({ team: t, req: r })));
     defenderPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
     for (const { team, req } of defenderPending) {
@@ -317,7 +339,6 @@ export const generateTeams = (
     }
     if (!validGeneration) continue;
 
-    // 3. Volantes/Meias Defensivos
     const defMidPending = teamsData.flatMap(t => t.reqs.filter(r => isDefensiveMidRole(r.id)).map(r => ({ team: t, req: r })));
     defMidPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
     for (const { team, req } of defMidPending) {
@@ -325,45 +346,17 @@ export const generateTeams = (
     }
     if (!validGeneration) continue;
 
-    // 4. Qualquer slot restante de linha
     const remainingPending = teamsData.flatMap(t => t.reqs.map(r => ({ team: t, req: r })));
     for (const { team, req } of remainingPending) {
       if (!assignPlayerToRole(team, req)) { validGeneration = false; break; }
     }
     if (!validGeneration) continue;
 
-    const missingLinePlayers = teamsData.some(t => t.players.length < 6);
+    // Salvaguarda matemática rígida dos 6 de linha
+    const missingLinePlayers = teamsData.some(t => t.players.filter(p => p.assignedRole !== 'Goleiro').length < 6);
     if (missingLinePlayers) continue;
 
-    if (!neverScaleGoalkeepers) {
-      for (let t = 0; t < numTeams; t++) {
-        if (workingPool.length === 0) break;
-
-        let chosenGkPlayer: Player | null = null;
-        let gkIdx = workingPool.findIndex(p => p.isGoalkeeper);
-        let forceLowGkStats = false;
-
-        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO');
-        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR');
-        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol);
-        if (gkIdx === -1) {
-          gkIdx = workingPool.findIndex(p => p.position === 'MEIA_DEFENSIVO');
-          if (gkIdx !== -1) forceLowGkStats = true;
-        }
-        if (gkIdx === -1 && workingPool.length > 0) gkIdx = 0;
-
-        if (gkIdx !== -1) {
-          chosenGkPlayer = workingPool.splice(gkIdx, 1)[0];
-          const gkReq = {
-            id: 'Goleiro',
-            allowedOriginalPositions: ['DEFENSOR', 'MEIA_DEFENSIVO', 'MEIA_OFENSIVO', 'ATACANTE'] as Player['position'][],
-            calcScore: scoreGoalkeeper,
-          };
-          teamAddPlayer(teamsData[t], chosenGkPlayer, gkReq, chosenGkPlayer.isGoalkeeper ? 0 : 1, true, forceLowGkStats);
-        }
-      }
-    }
-
+    // 3. DISTRIBUIÇÃO DOS RESERVAS SOBRANTES (Goleiros excedentes no banco atuam na sua linha nativa)
     let currentTeamBenchIdx = 0;
     while (workingPool.length > 0) {
       const player = workingPool.shift()!;
@@ -385,6 +378,7 @@ export const generateTeams = (
       currentTeamBenchIdx++;
     }
 
+    // 4. PROCESSAMENTO DE MÉDIAS E OVERALLS
     let benchToTitularDiff = 0;
     teamsData.forEach(team => {
       const sumScores = team.players.reduce((s, tp) => s + tp.roleScore, 0);
