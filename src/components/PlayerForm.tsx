@@ -118,14 +118,6 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
           </label>
         </div>
 
-        {Object.values(stats).some((v) => v === 5) && (
-          <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255,200,0,0.1)', borderRadius: '8px', border: '1px solid rgba(255,200,0,0.3)' }}>
-            <p style={{ fontSize: '0.9rem', color: '#FFD700', margin: 0, lineHeight: '1.4' }}>
-              ⚠️ <strong>Observação:</strong> Você atribuiu 5 estrelas a um ou mais atributos. Reserve 5 estrelas apenas para jogadores praticamente perfeitos naquilo. Use 4 estrelas para muito bom.
-            </p>
-          </div>
-        )}
-
         <div className="input-group">
           <label>Posição Principal</label>
           <select 
@@ -146,11 +138,19 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
         </div>
 
         <div style={{ borderTop: '1px solid var(--border-color)', margin: '20px 0', paddingTop: '20px' }}>
+
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Atributos do Jogador</h3>
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.3)' }}>
+              <p style={{ fontSize: '0.9rem', color: '#ffffff', margin: 0, lineHeight: '1.4' }}>
+                <strong>Observação:</strong> Prefira escolher entre 1-5 estrelas, sendo mais que 5 para quando o jogador for praticamente perfeito naquilo.
+              </p>
+            </div>      
           {allStatsAreDefault && (
             <div style={{ marginBottom: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(0, 123, 255, 0.08)', border: '1px solid rgba(0, 123, 255, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
               Definir estrelas em todos os atributos
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4', fontWeight: 400 }}>
-                para atribuição rápida, depois ajuste de acordo com cada atributo ( evite usar mais de 5 estrelas )       
+                para atribuição rápida, depois ajuste de acordo com cada atributo  
               </p>  
               <StarRating 
                 label="" 
@@ -158,18 +158,13 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
                 onChange={v => updateAllStats(v)} 
               />
             </div>            
-          )}
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Atributos do Jogador</h3>
-          <div style={{ marginBottom: '20px' }}>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4' }}>
-              Prefira escolher entre 1-5 estrelas, sendo 5.5 e 6 para quando o jogador for praticamente perfeito naquilo.
-            </p>            
+          )}                    
             <StarRating
               label="Recomposição defensiva / Velocidade / Vigor Físico"
               value={stats.geral_recomposicaoVelocidadeVigor!}
               onChange={v => updateStat('geral_recomposicaoVelocidadeVigor', v)}
             />
-          </div>
+          </div>        
 
           {position === 'DEFENSOR' && (
             <>
@@ -264,6 +259,14 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
             </div>
           )}
         </div>
+
+        {Object.values(stats).some((v) => v >    5) && (
+          <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255,200,0,0.1)', borderRadius: '8px', border: '1px solid rgba(255,200,0,0.3)' }}>
+            <p style={{ fontSize: '0.9rem', color: '#FFD700', margin: 0, lineHeight: '1.4' }}>
+              ⚠️ <strong>Observação:</strong> Você atribuiu mais de 5 estrelas a um ou mais atributos. Reserve mais de 5 estrelas apenas para jogadores praticamente perfeitos naquilo. Use 5 estrelas para muito bom.
+            </p>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: '12px', marginTop: '30px' }}>
           <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
