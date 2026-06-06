@@ -59,15 +59,17 @@ export function SimulationTab() {
     ];
 
     return (
-      <div style={{ width: '220px', minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '10px', justifyContent: 'center', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>Campo</span>
-        <div style={{ background: 'linear-gradient(180deg, rgba(0,100,0,0.14), rgba(0,130,0,0.24))', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '18px', padding: '12px', display: 'grid', gap: '8px' }}>
+      /* CORRIGIDO: margin alterada de '4px 0 0 auto' para '4px 0 0 0' para alinhar à esquerda quando quebrar linha */
+      <div style={{ flex: '0 1 auto', width: 'max-content', display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center', alignItems: 'center', margin: '4px 0 0 0', padding: '0 4px' }}>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>Posicionamento tático</span>
+        
+        <div style={{ background: 'linear-gradient(180deg, rgba(0,100,0,0.12), rgba(0,130,0,0.22))', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '10px', display: 'grid', gap: '6px' }}>
           {layout.map(section => {
             const playersInSection = players.filter(p => section.roles.includes(p.roleShort || ''));
             return (
-              <div key={section.area} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '12px', minHeight: '42px', alignItems: 'center', textAlign: 'center' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{section.label}</span>
-                <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text)' }}>
+              <div key={section.area} style={{ display: 'flex', flexDirection: 'column', gap: '1px', padding: '4px 8px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', minHeight: '32px', alignItems: 'center', textAlign: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{section.label}</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
                   {playersInSection.length > 0 ? playersInSection.map(p => p.player.name).join(', ') : '—'}
                 </span>
               </div>
@@ -145,7 +147,7 @@ export function SimulationTab() {
           </div>
           
           <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.875rem', color: activePlayersCount < requiredPlayers ? 'var(--danger)' : 'var(--text-muted)' }}>
+            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               {activePlayersCount} / {requiredPlayers} jogadores ativos (Mínimo de linha atingido)
             </span>
             <button 
@@ -209,50 +211,60 @@ export function SimulationTab() {
                     </div>
                   </div>
                   
-                  <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'nowrap' }}>
-                    <div style={{ flex: '1 1 auto', minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {/* MODIFICADO: Adicionado 'justifyContent: 'space-between'' e 'gap: '16px'' para gerenciar a distância dinâmica entre a lista e o campinho */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'space-between', gap: '16px' }}>
+                    
+                    {/* Lista de Jogadores Titulares */}
+                    <div style={{ flex: '0 1 auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {team.players.map((tp, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', padding: '2px 0' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                            {/* Linha 1: Nome do Jogador e Badges */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                               <span style={{ fontWeight: 500 }}>{tp.player.name}</span>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '4px' }}>
-                                (OVR: {Math.round((tp.roleScore / 6) * 100)})
-                              </span>
                               {tp.improvisationPenalty > 0 && (
                                 <span title="Posição Improvisada">
-                                  <AlertTriangle size={14} color="var(--star-active)" />
+                                  <AlertTriangle size={13} color="var(--star-active)" />
                                 </span>
                               )}
-                              {(tp.player.isCaptain || (tp as any).isCrownFallback) && <span title="Capitão">👑</span>}
+                              {(tp.player.isCaptain || (tp as any).isCrownFallback) && <span title="Capitão" style={{ fontSize: '0.85rem' }}>👑</span>}
                               {tp.player.isGoalkeeper && (
                                 <span title="Goleiro">
-                                  <ShieldAlert size={14} color="var(--primary)" />
+                                  <ShieldAlert size={13} color="var(--primary)" />
                                 </span>
                               )}
                             </div>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                            
+                            {/* Linha 2: OVR (Exclusiva) */}
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                OVR: {Math.round((tp.roleScore / 6) * 100)}
+                              </span>
+                            </div>
+
+                            {/* Linha 3: Posições e Funções */}
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                               {(tp.roleShort || '').length > 0 && (
-                                <span style={{ background: 'rgba(0,0,0,0.06)', padding: '2px 6px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700 }}>{tp.roleShort}</span>
+                                <span style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700 }}>{tp.roleShort}</span>
                               )}
-                              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{tp.roleLabel || tp.assignedRole}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{tp.roleLabel || tp.assignedRole}</span>
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
-                    <div style={{ marginLeft: 'auto' }}>
-                      {renderFieldMap(team.players)}
-                    </div>
+
+                    {/* Campinho tático renderizado compacto e alinhado corretamente */}
+                    {renderFieldMap(team.players)}
                   </div>
 
                   {team.bench && team.bench.length > 0 && (
-                    <div style={{ marginTop: '16px', padding: '12px', borderTop: '1px solid var(--border-color)' }}>
-                      <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: 'var(--text-muted)' }}>Banco por time</h4>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ marginTop: '14px', padding: '10px 0 0 0', borderTop: '1px solid var(--border-color)' }}>
+                      <h4 style={{ margin: '0 0 6px 0', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Banco de Reservas</h4>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                         {team.bench.map((bp, idx) => (
-                          <span key={idx} style={{ background: 'rgba(255,255,255,0.08)', padding: '4px 10px', borderRadius: '10px', fontSize: '0.85rem' }}>
-                            {bp.player.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{bp.roleLabel || bp.assignedRole}</span>
+                          <span key={idx} style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 8px', borderRadius: '8px', fontSize: '0.8rem', border: '1px solid rgba(255,255,255,0.04)' }}>
+                            {bp.player.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.70rem' }}>({bp.roleShort || 'LINHA'})</span>
                           </span>
                         ))}
                       </div>
