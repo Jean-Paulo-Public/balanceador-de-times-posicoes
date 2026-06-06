@@ -49,12 +49,14 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     setStats(prev => ({ ...prev, [key]: value }));
   };
 
-  // Função para atualizar todos os atributos simultaneamente
+  // CORREÇÃO DO ERRO 1: Asserção de tipo para garantir que estamos mutando apenas propriedades numéricas
   const updateAllStats = (value: number) => {
     setStats(prev => {
       const newStats = { ...prev };
       (Object.keys(newStats) as (keyof PlayerStats)[]).forEach(key => {
-        newStats[key] = value;
+        if (key !== 'gk_pegas_no_gol') {
+          (newStats[key] as number) = value;
+        }
       });
       return newStats;
     });
@@ -81,8 +83,13 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     onClose();
   };
 
+  // CORREÇÃO DO ERRO 2: Validação se o valor retornado da chave é estritamente um número antes de somar
   const getAvg = (keys: (keyof PlayerStats)[]) => {
-    const sum = keys.reduce((acc, key) => acc + (stats[key] || 0), 0);
+    const sum = keys.reduce((acc, key) => {
+      const val = stats[key];
+      const numericVal = typeof val === 'number' ? val : 0;
+      return acc + numericVal;
+    }, 0);
     return (sum / keys.length).toFixed(1);
   };
 
@@ -254,13 +261,13 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
               </p>
               <StarRating label="Defesa / Reflexo" value={stats.gk_defesaReflexo!} onChange={v => updateStat('gk_defesaReflexo', v)} />
               <StarRating label="Saída de bola precisa / Passe" value={stats.gk_saidaPrecisa!} onChange={v => updateStat('gk_saidaPrecisa', v)} />
-              <StarRating label="Posicionamento em contra ataques / Saída na bola" value={stats.gk_posicionamentoSaida!} onChange={v => updateStat('gk_posicionamentoSaida', v)} />                                                    
+              <StarRating label="Posicionamento em contra ataques / Saída na bola" value={stats.gk_posicionamentoSaida!} onChange={v => updateStat('gk_posicionamentoSaida', v)} />                                                                                    
               <StarRating label="Posicionamento Aéreo / Domínio da área" value={stats.gk_posicionamentoAereo!} onChange={v => updateStat('gk_posicionamentoAereo', v)} />              
             </div>
           )}
         </div>
 
-        {Object.values(stats).some((v) => v >    5) && (
+        {Object.values(stats).some((v) => typeof v === 'number' && v > 5) && (
           <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255,200,0,0.1)', borderRadius: '8px', border: '1px solid rgba(255,200,0,0.3)' }}>
             <p style={{ fontSize: '0.9rem', color: '#FFD700', margin: 0, lineHeight: '1.4' }}>
               ⚠️ <strong>Observação:</strong> Você atribuiu mais de 5 estrelas a um ou mais atributos. Reserve mais de 5 estrelas apenas para jogadores praticamente perfeitos naquilo. Use 5 estrelas para muito bom.

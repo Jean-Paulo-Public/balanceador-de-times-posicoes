@@ -258,9 +258,29 @@ export function SimulationTab() {
                     {renderFieldMap(team.players)}
                   </div>
 
+                  {/* AJUSTADO: Seção do Banco trazendo a nova informação do benchOverall */}
                   {team.bench && team.bench.length > 0 && (
                     <div style={{ marginTop: '14px', padding: '10px 0 0 0', borderTop: '1px solid var(--border-color)' }}>
-                      <h4 style={{ margin: '0 0 6px 0', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Banco de Reservas</h4>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          Banco de Reservas
+                        </h4>
+                        {team.benchOverall !== undefined && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Média do Banco:</span>
+                            <span style={{ 
+                              fontSize: '0.75rem', 
+                              fontWeight: 'bold',
+                              background: `linear-gradient(135deg, ${team.benchOverall > 75 ? 'var(--secondary)' : team.benchOverall > 50 ? 'var(--star-active)' : 'var(--danger)'}, transparent)`,
+                              padding: '2px 8px',
+                              borderRadius: '10px',
+                              color: 'var(--text)'
+                            }}>
+                              {team.benchOverall}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                         {team.bench.map((bp, idx) => (
                           <span key={idx} style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 8px', borderRadius: '8px', fontSize: '0.8rem', border: '1px solid rgba(255,255,255,0.04)' }}>

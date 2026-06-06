@@ -34,6 +34,9 @@ export interface PlayerStats {
   gk_defesaReflexo?: number;
   gk_posicionamentoAereo?: number;
   gk_saidaPrecisa?: number;
+  
+  // CORREÇÃO: Propriedade necessária para o mapeamento dinâmico de goleiros na linha
+  gk_pegas_no_gol?: boolean;
 }
 
 export interface Player {
@@ -52,14 +55,16 @@ export interface Team {
   id: number;
   name: string;
   overall: number;
+  // CORREÇÃO: Adicionado para permitir renderização nos componentes (SimulationTab)
+  benchOverall?: number; 
   tacticalSystem?: string;
   players: {
     player: Player;
     assignedRole: string;
     improvisationPenalty: number;
     roleScore: number;
-    roleLabel?: string; // Human readable label (e.g. "Meia atacante (improvisado)")
-    roleShort?: string; // Short code (DEF, MD, MEI, MA, ATA, GK)
+    roleLabel?: string;
+    roleShort?: string;
     isCrownFallback?: boolean;
   }[];
   bench?: {
@@ -76,8 +81,7 @@ export interface Team {
 export interface SimulationResult {
   id: string;
   teams: Team[];
-  scoreDeviation: number; // Menor é melhor (mais equilibrado)
+  scoreDeviation: number;
   totalImprov: number;
-  equilibrium?: number; // Sum of squared differences between team overalls (lower is better)
+  equilibrium?: number;
 }
-
