@@ -78,5 +78,6 @@ export interface SimulationResult {
   teams: Team[];
   scoreDeviation: number; // Menor é melhor (mais equilibrado)
   totalImprov: number;
+  equilibrium?: number; // Sum of squared differences between team overalls (lower is better)
 }
 

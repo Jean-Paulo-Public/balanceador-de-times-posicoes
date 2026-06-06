@@ -364,11 +364,21 @@ export const generateTeams = (
     const deviation = Math.sqrt(overalls.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / overalls.length);
     const totalImprov = teamsData.reduce((acc, t) => acc + t.players.reduce((sum, p) => sum + p.improvisationPenalty, 0), 0);
 
+    // Compute equilibrium metric: sum of squared differences for all pairwise team overalls
+    let equilibrium = 0;
+    for (let i = 0; i < overalls.length; i++) {
+      for (let j = i + 1; j < overalls.length; j++) {
+        const diff = overalls[i] - overalls[j];
+        equilibrium += diff * diff;
+      }
+    }
+
     results.push({
       id: crypto.randomUUID(),
       teams: teamsData.map(t => ({ id: t.id, name: t.name, overall: t.overall, players: t.players, tacticalSystem: t.tacticalSystem, bench: t.bench })),
       scoreDeviation: deviation,
-      totalImprov: totalImprov
+      totalImprov: totalImprov,
+      equilibrium
     });
   }
 
@@ -389,9 +399,10 @@ export const generateTeams = (
   }
 
   finalResults.sort((a, b) => {
-    if (a.totalImprov !== b.totalImprov) {
-      return a.totalImprov - b.totalImprov;
-    }
+    const ae = (a as any).equilibrium ?? 0;
+    const be = (b as any).equilibrium ?? 0;
+    if (ae !== be) return ae - be;
+    if (a.totalImprov !== b.totalImprov) return a.totalImprov - b.totalImprov;
     return a.scoreDeviation - b.scoreDeviation;
   });
 
