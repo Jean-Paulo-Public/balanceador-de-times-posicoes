@@ -1,5 +1,26 @@
 # React + TypeScript + Vite
 
+## Deploy
+
+Use these commands to publish the current `main` branch to GitHub Pages:
+
+- `npm install`
+- `npm run deploy`
+
+The `deploy` script will build the app and automatically clear the local `gh-pages` cache before publishing `dist/`.
+
+## Auto pré-cadastro
+
+Se o aplicativo detectar que não há nenhum jogador cadastrado, ele adiciona automaticamente um time inicial com:
+
+- 3 goleiros (origem como `DEFENSOR`)
+- 3 defensores
+- 6 volantes
+- 6 meias atacantes
+- 3 atacantes
+
+Cada jogador recebe uma avaliação de 2 a 4 estrelas aleatória para facilitar o primeiro cadastro.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

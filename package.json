@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",
+    "deploy": "node -e \"const fs = require('fs'); const p = 'node_modules/.cache/gh-pages'; if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });\" && gh-pages -d dist",
     "lint": "eslint .",
     "preview": "vite preview"
   },
