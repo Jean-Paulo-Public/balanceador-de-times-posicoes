@@ -339,7 +339,7 @@ export function SimulationTab() {
             <h3 style={{ color: 'var(--danger)', marginBottom: '12px', marginTop: 0 }}>⚠️ Nenhuma escalação viável encontrada</h3>
             <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', maxWidth: '520px', margin: '0 auto', fontSize: '0.92rem' }}>
               Não há combinações de jogadores válidos suficientes para preencher estritamente as vagas táticas exigidas pelo esquema de linha. 
-              <strong> Por favor, cadastre ou ative mais meias ou goleiros para viabilizar as equipes.</strong>
+              <strong> Por favor, cadastre, altere o cadastro ou ative mais meias ( principalmente volantes ), defensores ou goleiros para viabilizar as equipes.</strong>
             </p>
           </div>
         )}
