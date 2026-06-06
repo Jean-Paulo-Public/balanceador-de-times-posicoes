@@ -97,7 +97,6 @@ export const generateTeams = (
 ): SimulationResult[] => {
   const pool = players.filter(p => p.active);
   
-  // Mínimo absoluto de jogadores ativos necessários para as linhas (6 por time)
   const baseFieldPlayersNeeded = numTeams * 6;
   if (pool.length < baseFieldPlayersNeeded) return [];
 
@@ -155,10 +154,10 @@ export const generateTeams = (
     team: { players: Team['players'] },
     player: Player,
     req: { id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; },
-    improvisationPenalty: number,
+    improvised: number,
     isGoalkeeperRole: boolean = false
   ) => {
-    const labels = getRoleLabels(player, req.id, improvisationPenalty === 1, isGoalkeeperRole);
+    const labels = getRoleLabels(player, req.id, improvised === 1, isGoalkeeperRole);
     const finalRoleScore = isGoalkeeperRole 
       ? getAvg([scoreGoalkeeper(player), getLineScoreByPosition(player, req.id)])
       : getLineScoreByPosition(player, req.id);
@@ -167,7 +166,7 @@ export const generateTeams = (
       player,
       assignedRole: req.id,
       roleScore: finalRoleScore,
-      improvisationPenalty,
+      improvisationPenalty: improvised,
       ...labels
     });
   };
@@ -274,10 +273,8 @@ export const generateTeams = (
       };
     });
 
-    // Passo 1: Escala os atacantes e meias ofensivos primeiro, equilibrando pelas equipes mais fracas.
     assignRolesByPredicate(isAttackRole);
 
-    // Passo 2: Escala ao menos um defensor por equipe, priorizando os melhores zagueiros por time.
     const defenderTeams = teamsData
       .filter((team) => team.reqs.some((req) => isDefenderRole(req.id)))
       .sort((a, b) => getTeamCurrentScore(a) - getTeamCurrentScore(b));
@@ -286,13 +283,10 @@ export const generateTeams = (
       if (defenderReq) assignPlayerToRole(team, defenderReq);
     }
 
-    // Passo 3: Escala os volantes e meias defensivos para equilibrar a proteção do meio-campo.
     assignRolesByPredicate(isDefensiveMidRole);
 
-    // Passo 4: Preenche as posições restantes de linha.
     assignRolesByPredicate((id) => !isAttackRole(id) && !isDefenderRole(id) && !isDefensiveMidRole(id));
 
-    // Passo 5: Caso a equipe ainda precise de um goleiro mínimo, aproveita o reservatório disponível.
     for (let t = 0; t < numTeams; t++) {
       if (!teamsData[t].needsGoalkeeper) continue;
       if (dynamicGkReservoir.length === 0) break;
@@ -307,7 +301,6 @@ export const generateTeams = (
       teamAddPlayer(teamsData[t], player, req, player.isGoalkeeper ? 0 : 1, true);
     }
 
-    // Passo 6: Jogadores restantes entram no banco de reservas.
     let currentTeamBenchIdx = 0;
     while (dynamicGkReservoir.length > 0) {
       const targetTeam = teamsData[currentTeamBenchIdx % numTeams];
@@ -344,7 +337,6 @@ export const generateTeams = (
       currentTeamBenchIdx++;
     }
 
-    // Passo 6: Cálculo de médias finais e pontuação de equilíbrio (Overall)
     teamsData.forEach(team => {
       let sumScores = 0;
       let totalPenalty = 0;
@@ -364,7 +356,6 @@ export const generateTeams = (
     const deviation = Math.sqrt(overalls.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / overalls.length);
     const totalImprov = teamsData.reduce((acc, t) => acc + t.players.reduce((sum, p) => sum + p.improvisationPenalty, 0), 0);
 
-    // Compute equilibrium metric: sum of squared differences for all pairwise team overalls
     let equilibrium = 0;
     for (let i = 0; i < overalls.length; i++) {
       for (let j = i + 1; j < overalls.length; j++) {
@@ -398,10 +389,39 @@ export const generateTeams = (
     finalResults = [...results, ...fixedResults];
   }
 
+  // --- NOVA LÓGICA DE ORDENAÇÃO POR CAMADAS (TIERS) ---
   finalResults.sort((a, b) => {
-    const ae = (a as any).equilibrium ?? 0;
-    const be = (b as any).equilibrium ?? 0;
-    if (ae !== be) return ae - be;
+    const eqA = a.equilibrium ?? 0;
+    const eqB = b.equilibrium ?? 0;
+
+    // Determina o tier de prioridade para o cenário A
+    let tierA = 3; // Tier padrão (Restante dos cenários)
+    if (eqA < 10 && a.totalImprov === 0) {
+      tierA = 1; // Prioridade Máxima
+    } else if (eqA < 50) {
+      tierA = 2; // Segunda Prioridade
+    }
+
+    // Determina o tier de prioridade para o cenário B
+    let tierB = 3;
+    if (eqB < 10 && b.totalImprov === 0) {
+      tierB = 1;
+    } else if (eqB < 50) {
+      tierB = 2;
+    }
+
+    // Se estiverem em Tiers de prioridades diferentes, o menor tier vem na frente
+    if (tierA !== tierB) {
+      return tierA - tierB;
+    }
+
+    // Comportamento dentro do Tier 2: Ordenar primeiro por quem tem menor número de improvisações
+    if (tierA === 2 && a.totalImprov !== b.totalImprov) {
+      return a.totalImprov - b.totalImprov;
+    }
+
+    // Desempate padrão para cenários do mesmo Tier (ou se empatarem nos critérios de cima)
+    if (eqA !== eqB) return eqA - eqB;
     if (a.totalImprov !== b.totalImprov) return a.totalImprov - b.totalImprov;
     return a.scoreDeviation - b.scoreDeviation;
   });
