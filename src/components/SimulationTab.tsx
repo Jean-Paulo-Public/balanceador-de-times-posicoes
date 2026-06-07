@@ -93,6 +93,11 @@ export function SimulationTab() {
               ? playersList.filter(p => p.roleShort === 'GK')
               : playersList.filter(p => section.roles.includes(p.roleShort || ''));
 
+            // Se a seção for de "Meia Ataque" (MA) e não houver jogadores nela (como no sistema de Contenção), nós a ocultamos do mapa
+            if (section.area === 'MA' && playersInSection.length === 0) {
+              return null;
+            }
+
             return (
               <div key={section.area} style={{ display: 'flex', flexDirection: 'column', gap: '1px', padding: '4px 8px', background: section.isGK ? 'rgba(0, 150, 255, 0.1)' : 'rgba(255,255,255,0.05)', borderRadius: '8px', minHeight: '32px', alignItems: 'center', textAlign: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: '0.62rem', fontWeight: 700, color: section.isGK ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{section.label}</span>
@@ -134,6 +139,7 @@ export function SimulationTab() {
                     <option value="EQUILIBRADA">Equilibrada</option>
                     <option value="OFENSIVA">Ofensiva</option>
                     <option value="DEFENSIVA">Defensiva</option>
+                    <option value="CONTENCAO">Contenção</option>
                   </select>
                 </div>
               ))}

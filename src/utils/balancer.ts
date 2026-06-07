@@ -77,13 +77,31 @@ const isImprovisationAllowed = (playerPosition: Player['position'], targetRoleId
   return true;
 };
 
+function getCombinations<T>(array: T[], size: number): T[][] {
+  const result: T[][] = [];
+  function helper(start: number, combo: T[]) {
+    if (combo.length === size) {
+      result.push([...combo]);
+      return;
+    }
+    for (let i = start; i < array.length; i++) {
+      combo.push(array[i]);
+      helper(i + 1, combo);
+      combo.pop();
+    }
+  }
+  helper(0, []);
+  return result;
+}
+
 type FormationSlot = {
   id: string;
   allowedOriginalPositions: Player['position'][];
   calcScore: (p: Player) => number;
 };
 
-const Formations: Record<'EQUILIBRADA' | 'OFENSIVA' | 'DEFENSIVA', FormationSlot[]> = {
+// MUDANÇA AQUI: Adicionado a chave 'CONTENCAO' nas formações mapeadas
+const Formations: Record<'EQUILIBRADA' | 'OFENSIVA' | 'DEFENSIVA' | 'CONTENCAO', FormationSlot[]> = {
   EQUILIBRADA: [
     { id: 'Defensor', allowedOriginalPositions: ['DEFENSOR'], calcScore: scoreDefensor },
     { id: 'Volante', allowedOriginalPositions: ['MEIA_DEFENSIVO'], calcScore: scoreMeiaDefensivo },
@@ -107,6 +125,14 @@ const Formations: Record<'EQUILIBRADA' | 'OFENSIVA' | 'DEFENSIVA', FormationSlot
     { id: 'Meia 1', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
     { id: 'Meia 2', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
     { id: 'Atacante', allowedOriginalPositions: ['ATACANTE'], calcScore: scoreAtacante },
+  ],
+  CONTENCAO: [
+    { id: 'Defensor', allowedOriginalPositions: ['DEFENSOR'], calcScore: scoreDefensor },
+    { id: 'Volante 1', allowedOriginalPositions: ['MEIA_DEFENSIVO'], calcScore: scoreMeiaDefensivo },
+    { id: 'Volante 2', allowedOriginalPositions: ['MEIA_DEFENSIVO'], calcScore: scoreMeiaDefensivo },
+    { id: 'Meia 1', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
+    { id: 'Meia 2', allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'], calcScore: scoreMeia },
+    { id: 'Atacante', allowedOriginalPositions: ['ATACANTE'], calcScore: scoreAtacante },
   ]
 };
 
@@ -125,13 +151,12 @@ export const generateTeams = (
 ): SimulationResult[] => {
   const pool = players.filter(p => p.active);
 
-  const baseFieldPlayersNeeded = numTeams * 6;
-  if (pool.length < baseFieldPlayersNeeded) return [];
-
-  const totalDefendersInPool = pool.filter(p => p.position === 'DEFENSOR').length;
+  if (pool.length < numTeams * 6) return [];
 
   const results: ExtendedSimulationResult[] = [];
-  const formationKeys: (keyof typeof Formations)[] = ['EQUILIBRADA', 'OFENSIVA', 'DEFENSIVA'];
+  
+  // MUDANÇA AQUI: Adicionado 'CONTENCAO' no array de chaves táticas válidas do motor
+  const formationKeys: (keyof typeof Formations)[] = ['EQUILIBRADA', 'OFENSIVA', 'DEFENSIVA', 'CONTENCAO'];
 
   const posToLabel = (pos: Player['position']) => {
     switch (pos) {
@@ -147,7 +172,6 @@ export const generateTeams = (
     const originalPosLabel = posToLabel(player.position);
     const lower = assignedRole.toLowerCase();
 
-    // CORREÇÃO DA VISUALIZAÇÃO: Se a role for "goleiro" em qualquer variação de caixa alta/baixa, força GK.
     if (lower.includes('goleiro') || isGoalkeeperRole) {
       return { roleShort: 'GK', roleLabel: 'Goleiro' };
     }
@@ -239,8 +263,16 @@ export const generateTeams = (
     return bestAllowedIdx !== -1 ? bestAllowedIdx : bestFallbackIdx;
   };
 
+  const allAvailableGoalkeepers = pool.filter(p => p.stats.gk_pegas_no_gol || p.position === 'MEIA_DEFENSIVO'); 
+  const targetGkCount = !neverScaleGoalkeepers ? Math.min(allAvailableGoalkeepers.length, numTeams) : 0;
+
+  let goalkeeperCombos: Player[][] = [];
+  if (targetGkCount > 0) {
+    goalkeeperCombos = getCombinations(allAvailableGoalkeepers, targetGkCount);
+  }
+
   for (let iter = 0; iter < numSimulations; iter++) {
-    const workingPool = [...pool].sort(() => Math.random() - 0.5);
+    let workingPool = [...pool];
 
     const getNoise = () => (Math.random() - 0.5) * 1.5;
     const getTeamCurrentScore = (team: { players: Team['players'] }) =>
@@ -264,64 +296,14 @@ export const generateTeams = (
       };
     });
 
-    // 1. ALOCAÇÃO ANTECIPADA DE EXATAMENTE 1 GOLEIRO POR TIME
-    if (!neverScaleGoalkeepers) {
-      // CORREÇÃO ANTI-DUPLICAÇÃO: Construção de filas baseada em IDs únicos para que o mesmo jogador não seja clonado entre listas
-      const idsJaAdicionados = new Set<string>();
+    if (goalkeeperCombos.length > 0) {
+      const randomComboIndex = Math.floor(Math.random() * goalkeeperCombos.length);
+      const chosenGkCombo = goalkeeperCombos[randomComboIndex];
 
-      const fila1_volantesGk = workingPool.filter(p => {
-        if (p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO') {
-          idsJaAdicionados.add(p.id);
-          return true;
-        }
-        return false;
-      });
-      
-      const limitFila2 = numTeams - totalDefendersInPool;
-      let fila2_defensoresGkLimitados: Player[] = [];
-      let fila4_defensoresGkWrest: Player[] = [];
-      
-      const todosDefensoresGk = workingPool.filter(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR' && !idsJaAdicionados.has(p.id));
-      todosDefensoresGk.forEach(p => idsJaAdicionados.add(p.id));
+      for (let t = 0; t < chosenGkCombo.length; t++) {
+        const targetGk = chosenGkCombo[t];
+        const poolIndex = workingPool.findIndex(p => p.id === targetGk.id);
 
-      if (limitFila2 > 0) {
-        fila2_defensoresGkLimitados = todosDefensoresGk.slice(0, limitFila2);
-        fila4_defensoresGkWrest = todosDefensoresGk.slice(limitFila2);
-      } else {
-        fila4_defensoresGkWrest = todosDefensoresGk;
-      }
-
-      const fila3_outrosGk = workingPool.filter(p => {
-        if (p.stats.gk_pegas_no_gol && p.position !== 'MEIA_DEFENSIVO' && p.position !== 'DEFENSOR' && !idsJaAdicionados.has(p.id)) {
-          idsJaAdicionados.add(p.id);
-          return true;
-        }
-        return false;
-      });
-
-      const fila5_qualquerVolante = workingPool.filter(p => {
-        if (p.position === 'MEIA_DEFENSIVO' && !p.stats.gk_pegas_no_gol && !idsJaAdicionados.has(p.id)) {
-          idsJaAdicionados.add(p.id);
-          return true;
-        }
-        return false;
-      });
-
-      const filaGoleirosPrioritarios = [
-        ...fila1_volantesGk,
-        ...fila2_defensoresGkLimitados,
-        ...fila3_outrosGk,
-        ...fila4_defensoresGkWrest,
-        ...fila5_qualquerVolante
-      ];
-
-      // Garante escalação de estritamente no máximo um único goleiro por time
-      for (let t = 0; t < numTeams; t++) {
-        if (filaGoleirosPrioritarios.length === 0) break;
-
-        const candidatoGk = filaGoleirosPrioritarios.shift()!;
-        const poolIndex = workingPool.findIndex(p => p.id === candidatoGk.id);
-        
         if (poolIndex !== -1) {
           const chosenGkPlayer = workingPool.splice(poolIndex, 1)[0];
           const forceLowGkStats = !chosenGkPlayer.stats.gk_pegas_no_gol && chosenGkPlayer.position === 'MEIA_DEFENSIVO';
@@ -337,7 +319,8 @@ export const generateTeams = (
       }
     }
 
-    // 2. SISTEMA DE SELEÇÃO E DISTRIBUIÇÃO DA LINHA BASE (6 jogadores de linha)
+    workingPool.sort(() => Math.random() - 0.5);
+
     const assignPlayerToRole = (
       team: { players: Team['players']; reqs: Array<{ id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; originalIndex: number; }> },
       req: { id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; originalIndex: number; }
@@ -357,7 +340,7 @@ export const generateTeams = (
 
     const isAttackRole = (reqId: string) => {
       const lower = reqId.toLowerCase();
-      return lower.includes('atacante') || lower.includes('meia ofensivo') || (lower.includes('meia') && !lower.includes('defensivo') && !lower.includes('defensor'));
+      return lower.includes('atacante') || lower.includes('meia ofensivo') || (lower.includes('meia') && !lower.includes('defensivo') && !lower.includes('defensor') && !lower.includes('volante'));
     };
 
     const isDefenderRole = (reqId: string) => {
@@ -382,6 +365,7 @@ export const generateTeams = (
     const defenderPending = teamsData.flatMap(t => t.reqs.filter(r => isDefenderRole(r.id)).map(r => ({ team: t, req: r })));
     defenderPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
     for (const { team, req } of defenderPending) {
+
       if (!assignPlayerToRole(team, req)) { validGeneration = false; break; }
     }
     if (!validGeneration) continue;
@@ -402,7 +386,6 @@ export const generateTeams = (
     const missingLinePlayers = teamsData.some(t => t.players.filter(p => p.assignedRole !== 'Goleiro').length < 6);
     if (missingLinePlayers) continue;
 
-    // --- CÁLCULO E INJEÇÃO MÁXIMA IGUALITÁRIA DE JOGADORES NA LINHA ---
     if (!maxSixLinePlayers) {
       const remainingPlayersCount = workingPool.length;
       const extraPerTeam = Math.floor(remainingPlayersCount / numTeams);
@@ -429,7 +412,6 @@ export const generateTeams = (
       }
     }
 
-    // 3. DISTRIBUIÇÃO DOS RESERVAS SOBRANTES (Goleiros sobressalentes entram estritamente na linha/banco aqui)
     let currentTeamBenchIdx = 0;
     while (workingPool.length > 0) {
       const player = workingPool.shift()!;
@@ -451,7 +433,6 @@ export const generateTeams = (
       currentTeamBenchIdx++;
     }
 
-    // 4. PROCESSAMENTO DE MÉDIAS E OVERALLS
     let benchToTitularDiff = 0;
     teamsData.forEach(team => {
       const sumScores = team.players.reduce((s, tp) => s + tp.roleScore, 0);
@@ -513,11 +494,11 @@ export const generateTeams = (
 
     let tierA = 3;
     if (eqA < 10 && a.totalImprov === 0) tierA = 1;
-    else if (eqA < 50) tierA = 2;
+    if (eqA < 50) tierA = 2;
 
     let tierB = 3;
     if (eqB < 10 && b.totalImprov === 0) tierB = 1;
-    else if (eqB < 50) tierB = 2;
+    if (eqB < 50) tierB = 2;
 
     if (tierA !== tierB) return tierA - tierB;
     if (eqA !== eqB) return eqA - eqB;
