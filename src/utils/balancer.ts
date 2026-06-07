@@ -230,15 +230,18 @@ export const generateTeams = (
       };
     });
 
-    // 1. ALOCAÇÃO ANTECIPADA DE GOLEIROS TITULARES (Até 1 por time, se houver)
+    // 1. ALOCAÇÃO ANTECIPADA DE GOLEIROS TITULARES (Exatamente 1 por time, sem duplicar papel)
     if (!neverScaleGoalkeepers) {
       for (let t = 0; t < numTeams; t++) {
         if (workingPool.length === 0) break;
 
         let chosenGkPlayer: Player | null = null;
-        let gkIdx = workingPool.findIndex(p => p.isGoalkeeper);
         let forceLowGkStats = false;
 
+        // Tenta encontrar um goleiro nativo elegível para ser o ÚNICO do time
+        let gkIdx = workingPool.findIndex(p => p.isGoalkeeper);
+
+        // Fallbacks caso não ache goleiro nativo marcado
         if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO');
         if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR');
         if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol);
@@ -255,12 +258,14 @@ export const generateTeams = (
             allowedOriginalPositions: ['DEFENSOR', 'MEIA_DEFENSIVO', 'MEIA_OFENSIVO', 'ATACANTE'] as Player['position'][],
             calcScore: scoreGoalkeeper,
           };
+          
+          // Escalado estritamente como goleiro do time. O loop passa para o próximo time, evitando duplicidade.
           teamAddPlayer(teamsData[t], chosenGkPlayer, gkReq, (chosenGkPlayer.isGoalkeeper || !chosenGkPlayer.position) ? 0 : 1, true, forceLowGkStats);
         }
       }
     }
 
-    // 2. SISTEMA DE SELEÇÃO E DISTRIBUIÇÃO DA LINHA (Trata goleiros sobressalentes como linhas nativos)
+    // 2. SISTEMA DE SELEÇÃO E DISTRIBUIÇÃO DA LINHA (Trata goleiros sobressalentes puramente pela posição cadastrada)
     const selectBestPlayerIndex = (
       req: { id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; },
       sourcePool: Player[]
@@ -356,7 +361,7 @@ export const generateTeams = (
     const missingLinePlayers = teamsData.some(t => t.players.filter(p => p.assignedRole !== 'Goleiro').length < 6);
     if (missingLinePlayers) continue;
 
-    // 3. DISTRIBUIÇÃO DOS RESERVAS SOBRANTES (Goleiros excedentes no banco atuam na sua linha nativa)
+    // 3. DISTRIBUIÇÃO DOS RESERVAS SOBRANTES (Goleiros no banco atuam de acordo com sua posição cadastrada de linha)
     let currentTeamBenchIdx = 0;
     while (workingPool.length > 0) {
       const player = workingPool.shift()!;
