@@ -52,7 +52,6 @@ export function SimulationTab() {
     setIsSimulating(true);
     setHasSimulated(true);
     setTimeout(() => {
-      // Passado o sexto parâmetro contendo o estado booleano para o utilitário balancer
       const simResults = generateTeams(players, teamFormations, numTeams, 3000, neverScaleGoalkeepers, maxSixLinePlayers);
       setResults(simResults);
       setCurrentIndex(0);
@@ -75,10 +74,10 @@ export function SimulationTab() {
       { area: 'ATA', label: 'Ataque', roles: ['ATA'], isGK: false },
     ];
 
-    // Verifica se há um goleiro escalado neste time específico
-    const hasGoalkeeper = playersList.some(p => p.player.isGoalkeeper);
+    // MUDANÇA AQUI: Verifica se existe alguém atuando especificamente na posição de GK neste time
+    const hasGoalkeeper = playersList.some(p => p.roleShort === 'GK');
 
-    // Se houver goleiro, adiciona-o no topo do campinho (antes da defesa)
+    // Se houver goleiro escalado, adiciona a seção no topo do campinho
     if (hasGoalkeeper) {
       layout.unshift({ area: 'GK', label: 'Goleiro', roles: [], isGK: true });
     }
@@ -89,9 +88,9 @@ export function SimulationTab() {
         
         <div style={{ background: 'linear-gradient(180deg, rgba(0,100,0,0.12), rgba(0,130,0,0.22))', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '10px', display: 'grid', gap: '6px' }}>
           {layout.map(section => {
-            // Filtra os jogadores baseado se a seção mapeia goleiro nativo ou as posições de linha normais
+            // MUDANÇA AQUI: Filtramos estritamente pelo roleShort dinâmico vindo do motor
             const playersInSection = section.isGK 
-              ? playersList.filter(p => p.player.isGoalkeeper)
+              ? playersList.filter(p => p.roleShort === 'GK')
               : playersList.filter(p => section.roles.includes(p.roleShort || ''));
 
             return (
@@ -173,7 +172,6 @@ export function SimulationTab() {
                   <span style={{ fontSize: '0.95rem' }}>Nunca escalar goleiros</span>
                 </label>
 
-                {/* NOVO CHECKBOX INSERIDO */}
                 <label className="checkbox-group">
                   <input
                     type="checkbox"
@@ -205,7 +203,6 @@ export function SimulationTab() {
           )}
         </div>
 
-        {/* ALERTA DE EQUIPES DESEQUILIBRADAS (Equilibrium > 100) */}
         {results.length > 0 && currentSimulation && isImbalanced && (
           <div style={{
             marginBottom: '20px',
@@ -272,12 +269,10 @@ export function SimulationTab() {
                   </div>
                   
                   <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'space-between', gap: '16px' }}>
-                    {/* Lista de Jogadores Titulares */}
                     <div style={{ flex: '0 1 auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {team.players.map((tp, idx) => (
                         <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', padding: '2px 0' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                            {/* Linha 1: Nome do Jogador e Badges */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                               <span style={{ fontWeight: 500 }}>{tp.player.name}</span>
                               {tp.improvisationPenalty > 0 && (
@@ -286,21 +281,21 @@ export function SimulationTab() {
                                 </span>
                               )}
                               {(tp as any).player.isCaptain || (tp as any).isCrownFallback && <span title="Capitão" style={{ fontSize: '0.85rem' }}>👑</span>}
-                              {tp.player.isGoalkeeper && (
+                              
+                              {/* MUDANÇA AQUI: Ícone de escudo/goleiro só se ele REALMENTE estiver jogando como GK neste time */}
+                              {tp.roleShort === 'GK' && (
                                 <span title="Goleiro">
                                   <ShieldAlert size={13} color="var(--primary)" />
                                 </span>
                               )}
                             </div>
                             
-                            {/* Linha 2: OVR */}
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                                 OVR: {Math.round((tp.roleScore / 6) * 100)}
                               </span>
                             </div>
 
-                            {/* Linha 3: Posições e Funções */}
                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                               {(tp.roleShort || '').length > 0 && (
                                 <span style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700 }}>{tp.roleShort}</span>
@@ -312,11 +307,9 @@ export function SimulationTab() {
                       ))}
                     </div>
 
-                    {/* Campinho tático */}
                     {renderFieldMap(team.players)}
                   </div>
 
-                  {/* Seção do Banco */}
                   {team.bench && team.bench.length > 0 && (
                     <div style={{ marginTop: '14px', padding: '10px 0 0 0', borderTop: '1px solid var(--border-color)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -354,7 +347,6 @@ export function SimulationTab() {
           </div>
         )}
         
-        {/* MENSAGEM DE ERRO AMIGÁVEL QUANDO NÃO HÁ COMBINAÇÕES DO MOTOR */}
         {results.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
           <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', borderColor: 'var(--danger)', marginTop: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', color: 'var(--danger)' }}>
