@@ -13,6 +13,17 @@ export function SimulationTab() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasSimulated, setHasSimulated] = useState(false);
 
+  // --- NOVA PERSISTÊNCIA LOCAL PARA O LIMITE DE LINHA ---
+  const [maxSixLinePlayers, setMaxSixLinePlayers] = useState<boolean>(() => {
+    const saved = localStorage.getItem('max_six_line_players');
+    return saved ? JSON.parse(saved) : false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('max_six_line_players', JSON.stringify(maxSixLinePlayers));
+  }, [maxSixLinePlayers]);
+  // -----------------------------------------------------
+
   // --- NOVA LOGICA DE CONTAGEM E VALIDAÇÃO FLEXÍVEL ---
   const activePlayers = players.filter(p => p.active);
   const activePlayersCount = activePlayers.length;
@@ -21,7 +32,7 @@ export function SimulationTab() {
   const requiredPlayers = numTeams * 6;
   
   // Sugestão de quantidade de times baseada no tamanho do elenco de linha ativo
-  const suggestedTeams = activePlayersCount <= 17 ? 2 : activePlayersCount <= 23 ? 3 : 4;
+  const suggestedTeams = activePlayersCount <= 17 ? 2 : 3;
   // -----------------------------------------------------
 
   useEffect(() => {
@@ -41,7 +52,8 @@ export function SimulationTab() {
     setIsSimulating(true);
     setHasSimulated(true);
     setTimeout(() => {
-      const simResults = generateTeams(players, teamFormations, numTeams, 3000, neverScaleGoalkeepers);
+      // Passado o sexto parâmetro contendo o estado booleano para o utilitário balancer
+      const simResults = generateTeams(players, teamFormations, numTeams, 3000, neverScaleGoalkeepers, maxSixLinePlayers);
       setResults(simResults);
       setCurrentIndex(0);
       setIsSimulating(false);
@@ -149,16 +161,28 @@ export function SimulationTab() {
               </select>
             </div>
 
-            <div className="input-group" style={{ marginBottom: 0, minWidth: '220px' }}>
+            <div className="input-group" style={{ marginBottom: 0, minWidth: '240px' }}>
               <label style={{ display: 'block', marginBottom: '8px' }}>Opções</label>
-              <label className="checkbox-group">
-                <input
-                  type="checkbox"
-                  checked={neverScaleGoalkeepers}
-                  onChange={(e) => setNeverScaleGoalkeepers(e.target.checked)}
-                />
-                <span style={{ fontSize: '0.95rem' }}>Nunca escalar goleiros</span>
-              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label className="checkbox-group">
+                  <input
+                    type="checkbox"
+                    checked={neverScaleGoalkeepers}
+                    onChange={(e) => setNeverScaleGoalkeepers(e.target.checked)}
+                  />
+                  <span style={{ fontSize: '0.95rem' }}>Nunca escalar goleiros</span>
+                </label>
+
+                {/* NOVO CHECKBOX INSERIDO */}
+                <label className="checkbox-group">
+                  <input
+                    type="checkbox"
+                    checked={maxSixLinePlayers}
+                    onChange={(e) => setMaxSixLinePlayers(e.target.checked)}
+                  />
+                  <span style={{ fontSize: '0.95rem' }}>Nunca adicionar mais do que 6 jogadores na linha</span>
+                </label>
+              </div>
             </div>
           </div>
           
@@ -261,7 +285,7 @@ export function SimulationTab() {
                                   <AlertTriangle size={13} color="var(--star-active)" />
                                 </span>
                               )}
-                              {(tp.player.isCaptain || (tp as any).isCrownFallback) && <span title="Capitão" style={{ fontSize: '0.85rem' }}>👑</span>}
+                              {(tp as any).player.isCaptain || (tp as any).isCrownFallback && <span title="Capitão" style={{ fontSize: '0.85rem' }}>👑</span>}
                               {tp.player.isGoalkeeper && (
                                 <span title="Goleiro">
                                   <ShieldAlert size={13} color="var(--primary)" />

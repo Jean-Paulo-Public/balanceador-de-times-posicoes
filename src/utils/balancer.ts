@@ -120,12 +120,15 @@ export const generateTeams = (
   formationType: FormationType | FormationType[],
   numTeams: number,
   numSimulations: number = 2000,
-  neverScaleGoalkeepers: boolean = false
+  neverScaleGoalkeepers: boolean = false,
+  maxSixLinePlayers: boolean = false
 ): SimulationResult[] => {
   const pool = players.filter(p => p.active);
-  
+
   const baseFieldPlayersNeeded = numTeams * 6;
   if (pool.length < baseFieldPlayersNeeded) return [];
+
+  const totalDefendersInPool = pool.filter(p => p.position === 'DEFENSOR').length;
 
   const results: ExtendedSimulationResult[] = [];
   const formationKeys: (keyof typeof Formations)[] = ['EQUILIBRADA', 'OFENSIVA', 'DEFENSIVA'];
@@ -144,6 +147,7 @@ export const generateTeams = (
     const originalPosLabel = posToLabel(player.position);
     const lower = assignedRole.toLowerCase();
 
+    // CORREÇÃO DA VISUALIZAÇÃO: Se a role for "goleiro" em qualquer variação de caixa alta/baixa, força GK.
     if (lower.includes('goleiro') || isGoalkeeperRole) {
       return { roleShort: 'GK', roleLabel: 'Goleiro' };
     }
@@ -162,7 +166,7 @@ export const generateTeams = (
       return { roleShort: 'MA', roleLabel: `Meia Atacante${impro ? ' (improvisado)' : ''}` };
     }
     
-    if (lower === 'meia' || lower.includes('meia 1') || lower.includes('meia 2')) {
+    if (lower === 'meia' || lower.includes('meia 1') || lower.includes('meia 2') || lower.includes('extra')) {
       const isNativeMid = player.position === 'MEIA_DEFENSIVO' || player.position === 'MEIA_OFENSIVO';
       const actualImpro = isNativeMid ? false : improvised;
       return { roleShort: 'MEI', roleLabel: `Meia${actualImpro ? ' (improvisado)' : ''}` };
@@ -186,7 +190,7 @@ export const generateTeams = (
   ) => {
     const lowerReq = req.id.toLowerCase();
     let finalImprovisedPenalty = improvised;
-    if ((lowerReq === 'meia' || lowerReq.includes('meia 1') || lowerReq.includes('meia 2')) && 
+    if ((lowerReq === 'meia' || lowerReq.includes('meia 1') || lowerReq.includes('meia 2') || lowerReq.includes('extra')) && 
         (player.position === 'MEIA_DEFENSIVO' || player.position === 'MEIA_OFENSIVO')) {
       finalImprovisedPenalty = 0;
     }
@@ -203,6 +207,36 @@ export const generateTeams = (
       improvisationPenalty: finalImprovisedPenalty,
       ...labels
     });
+  };
+
+  const selectBestPlayerIndex = (
+    req: { id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; },
+    sourcePool: Player[],
+    noise: number
+  ) => {
+    let bestAllowedIdx = -1;
+    let bestAllowedScore = -Infinity;
+    let bestFallbackIdx = -1;
+    let bestFallbackScore = -Infinity;
+
+    for (let i = 0; i < sourcePool.length; i++) {
+      const player = sourcePool[i];
+      const score = req.calcScore(player) + noise;
+      
+      if (req.allowedOriginalPositions.includes(player.position)) {
+        if (score > bestAllowedScore) {
+          bestAllowedScore = score;
+          bestAllowedIdx = i;
+        }
+      } else if (isImprovisationAllowed(player.position, req.id)) {
+        if (score > bestFallbackScore) {
+          bestFallbackScore = score;
+          bestFallbackIdx = i;
+        }
+      }
+    }
+
+    return bestAllowedIdx !== -1 ? bestAllowedIdx : bestFallbackIdx;
   };
 
   for (let iter = 0; iter < numSimulations; iter++) {
@@ -230,78 +264,87 @@ export const generateTeams = (
       };
     });
 
-    // 1. ALOCAÇÃO ANTECIPADA DE GOLEIROS TITULARES (Exatamente 1 por time, sem duplicar papel)
+    // 1. ALOCAÇÃO ANTECIPADA DE EXATAMENTE 1 GOLEIRO POR TIME
     if (!neverScaleGoalkeepers) {
-      for (let t = 0; t < numTeams; t++) {
-        if (workingPool.length === 0) break;
+      // CORREÇÃO ANTI-DUPLICAÇÃO: Construção de filas baseada em IDs únicos para que o mesmo jogador não seja clonado entre listas
+      const idsJaAdicionados = new Set<string>();
 
-        let chosenGkPlayer: Player | null = null;
-        let forceLowGkStats = false;
-
-        // Tenta encontrar um goleiro nativo elegível para ser o ÚNICO do time
-        let gkIdx = workingPool.findIndex(p => p.isGoalkeeper);
-
-        // Fallbacks caso não ache goleiro nativo marcado
-        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO');
-        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR');
-        if (gkIdx === -1) gkIdx = workingPool.findIndex(p => p.stats.gk_pegas_no_gol);
-        if (gkIdx === -1) {
-          gkIdx = workingPool.findIndex(p => p.position === 'MEIA_DEFENSIVO');
-          if (gkIdx !== -1) forceLowGkStats = true;
+      const fila1_volantesGk = workingPool.filter(p => {
+        if (p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO') {
+          idsJaAdicionados.add(p.id);
+          return true;
         }
-        if (gkIdx === -1 && workingPool.length > 0) gkIdx = 0;
+        return false;
+      });
+      
+      const limitFila2 = numTeams - totalDefendersInPool;
+      let fila2_defensoresGkLimitados: Player[] = [];
+      let fila4_defensoresGkWrest: Player[] = [];
+      
+      const todosDefensoresGk = workingPool.filter(p => p.stats.gk_pegas_no_gol && p.position === 'DEFENSOR' && !idsJaAdicionados.has(p.id));
+      todosDefensoresGk.forEach(p => idsJaAdicionados.add(p.id));
 
-        if (gkIdx !== -1) {
-          chosenGkPlayer = workingPool.splice(gkIdx, 1)[0];
+      if (limitFila2 > 0) {
+        fila2_defensoresGkLimitados = todosDefensoresGk.slice(0, limitFila2);
+        fila4_defensoresGkWrest = todosDefensoresGk.slice(limitFila2);
+      } else {
+        fila4_defensoresGkWrest = todosDefensoresGk;
+      }
+
+      const fila3_outrosGk = workingPool.filter(p => {
+        if (p.stats.gk_pegas_no_gol && p.position !== 'MEIA_DEFENSIVO' && p.position !== 'DEFENSOR' && !idsJaAdicionados.has(p.id)) {
+          idsJaAdicionados.add(p.id);
+          return true;
+        }
+        return false;
+      });
+
+      const fila5_qualquerVolante = workingPool.filter(p => {
+        if (p.position === 'MEIA_DEFENSIVO' && !p.stats.gk_pegas_no_gol && !idsJaAdicionados.has(p.id)) {
+          idsJaAdicionados.add(p.id);
+          return true;
+        }
+        return false;
+      });
+
+      const filaGoleirosPrioritarios = [
+        ...fila1_volantesGk,
+        ...fila2_defensoresGkLimitados,
+        ...fila3_outrosGk,
+        ...fila4_defensoresGkWrest,
+        ...fila5_qualquerVolante
+      ];
+
+      // Garante escalação de estritamente no máximo um único goleiro por time
+      for (let t = 0; t < numTeams; t++) {
+        if (filaGoleirosPrioritarios.length === 0) break;
+
+        const candidatoGk = filaGoleirosPrioritarios.shift()!;
+        const poolIndex = workingPool.findIndex(p => p.id === candidatoGk.id);
+        
+        if (poolIndex !== -1) {
+          const chosenGkPlayer = workingPool.splice(poolIndex, 1)[0];
+          const forceLowGkStats = !chosenGkPlayer.stats.gk_pegas_no_gol && chosenGkPlayer.position === 'MEIA_DEFENSIVO';
+
           const gkReq = {
             id: 'Goleiro',
             allowedOriginalPositions: ['DEFENSOR', 'MEIA_DEFENSIVO', 'MEIA_OFENSIVO', 'ATACANTE'] as Player['position'][],
             calcScore: scoreGoalkeeper,
           };
           
-          // Escalado estritamente como goleiro do time. O loop passa para o próximo time, evitando duplicidade.
-          teamAddPlayer(teamsData[t], chosenGkPlayer, gkReq, (chosenGkPlayer.isGoalkeeper || !chosenGkPlayer.position) ? 0 : 1, true, forceLowGkStats);
+          teamAddPlayer(teamsData[t], chosenGkPlayer, gkReq, 0, true, forceLowGkStats);
         }
       }
     }
 
-    // 2. SISTEMA DE SELEÇÃO E DISTRIBUIÇÃO DA LINHA (Trata goleiros sobressalentes puramente pela posição cadastrada)
-    const selectBestPlayerIndex = (
-      req: { id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; },
-      sourcePool: Player[]
-    ) => {
-      let bestAllowedIdx = -1;
-      let bestAllowedScore = -Infinity;
-      let bestFallbackIdx = -1;
-      let bestFallbackScore = -Infinity;
-
-      for (let i = 0; i < sourcePool.length; i++) {
-        const player = sourcePool[i];
-        const score = req.calcScore(player) + getNoise();
-        
-        if (req.allowedOriginalPositions.includes(player.position)) {
-          if (score > bestAllowedScore) {
-            bestAllowedScore = score;
-            bestAllowedIdx = i;
-          }
-        } else if (isImprovisationAllowed(player.position, req.id)) {
-          if (score > bestFallbackScore) {
-            bestFallbackScore = score;
-            bestFallbackIdx = i;
-          }
-        }
-      }
-
-      return bestAllowedIdx !== -1 ? bestAllowedIdx : bestFallbackIdx;
-    };
-
+    // 2. SISTEMA DE SELEÇÃO E DISTRIBUIÇÃO DA LINHA BASE (6 jogadores de linha)
     const assignPlayerToRole = (
       team: { players: Team['players']; reqs: Array<{ id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; originalIndex: number; }> },
       req: { id: string; allowedOriginalPositions: Player['position'][]; calcScore: (p: Player) => number; originalIndex: number; }
     ) => {
       if (workingPool.length === 0) return false;
       
-      const playerIndexInPool = selectBestPlayerIndex(req, workingPool);
+      const playerIndexInPool = selectBestPlayerIndex(req, workingPool, getNoise());
       if (playerIndexInPool === -1) return false;
       
       const chosenPlayer = workingPool.splice(playerIndexInPool, 1)[0];
@@ -329,7 +372,6 @@ export const generateTeams = (
 
     let validGeneration = true;
 
-    // Distribuição em ondas prioritárias
     const attackPending = teamsData.flatMap(t => t.reqs.filter(r => isAttackRole(r.id)).map(r => ({ team: t, req: r })));
     attackPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
     for (const { team, req } of attackPending) {
@@ -357,11 +399,37 @@ export const generateTeams = (
     }
     if (!validGeneration) continue;
 
-    // Salvaguarda matemática rígida dos 6 de linha
     const missingLinePlayers = teamsData.some(t => t.players.filter(p => p.assignedRole !== 'Goleiro').length < 6);
     if (missingLinePlayers) continue;
 
-    // 3. DISTRIBUIÇÃO DOS RESERVAS SOBRANTES (Goleiros no banco atuam de acordo com sua posição cadastrada de linha)
+    // --- CÁLCULO E INJEÇÃO MÁXIMA IGUALITÁRIA DE JOGADORES NA LINHA ---
+    if (!maxSixLinePlayers) {
+      const remainingPlayersCount = workingPool.length;
+      const extraPerTeam = Math.floor(remainingPlayersCount / numTeams);
+
+      if (extraPerTeam > 0) {
+        const extraMidReq = {
+          id: 'Meia Extra',
+          allowedOriginalPositions: ['MEIA_DEFENSIVO', 'MEIA_OFENSIVO'] as Player['position'][],
+          calcScore: scoreMeia
+        };
+
+        for (let step = 0; step < extraPerTeam; step++) {
+          for (let t = 0; t < numTeams; t++) {
+            const currentTeam = teamsData[t];
+            const bestIndex = selectBestPlayerIndex(extraMidReq, workingPool, getNoise());
+            
+            if (bestIndex !== -1) {
+              const chosenExtraPlayer = workingPool.splice(bestIndex, 1)[0];
+              const isAllowedDirectly = extraMidReq.allowedOriginalPositions.includes(chosenExtraPlayer.position);
+              teamAddPlayer(currentTeam, chosenExtraPlayer, extraMidReq, isAllowedDirectly ? 0 : 1, false);
+            }
+          }
+        }
+      }
+    }
+
+    // 3. DISTRIBUIÇÃO DOS RESERVAS SOBRANTES (Goleiros sobressalentes entram estritamente na linha/banco aqui)
     let currentTeamBenchIdx = 0;
     while (workingPool.length > 0) {
       const player = workingPool.shift()!;
