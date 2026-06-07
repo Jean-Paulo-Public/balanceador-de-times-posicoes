@@ -100,7 +100,6 @@ type FormationSlot = {
   calcScore: (p: Player) => number;
 };
 
-// MUDANÇA AQUI: Adicionado a chave 'CONTENCAO' nas formações mapeadas
 const Formations: Record<'EQUILIBRADA' | 'OFENSIVA' | 'DEFENSIVA' | 'CONTENCAO', FormationSlot[]> = {
   EQUILIBRADA: [
     { id: 'Defensor', allowedOriginalPositions: ['DEFENSOR'], calcScore: scoreDefensor },
@@ -154,8 +153,6 @@ export const generateTeams = (
   if (pool.length < numTeams * 6) return [];
 
   const results: ExtendedSimulationResult[] = [];
-  
-  // MUDANÇA AQUI: Adicionado 'CONTENCAO' no array de chaves táticas válidas do motor
   const formationKeys: (keyof typeof Formations)[] = ['EQUILIBRADA', 'OFENSIVA', 'DEFENSIVA', 'CONTENCAO'];
 
   const posToLabel = (pos: Player['position']) => {
@@ -263,12 +260,31 @@ export const generateTeams = (
     return bestAllowedIdx !== -1 ? bestAllowedIdx : bestFallbackIdx;
   };
 
-  const allAvailableGoalkeepers = pool.filter(p => p.stats.gk_pegas_no_gol || p.position === 'MEIA_DEFENSIVO'); 
-  const targetGkCount = !neverScaleGoalkeepers ? Math.min(allAvailableGoalkeepers.length, numTeams) : 0;
+  // MUDANÇA AQUI: Separação estrita de Goleiros Reais vs Volantes Improvisados
+  const nativeGks = pool.filter(p => p.stats.gk_pegas_no_gol);
+  const volanteGks = pool.filter(p => !p.stats.gk_pegas_no_gol && p.position === 'MEIA_DEFENSIVO');
+  
+  let targetGkCount = !neverScaleGoalkeepers ? Math.min((nativeGks.length + volanteGks.length), numTeams) : 0;
+  
+  if (!neverScaleGoalkeepers && numTeams === 3) {
+    if (pool.length === 20) {
+      targetGkCount = Math.min((nativeGks.length + volanteGks.length), 2);
+    } else if (pool.length === 19) {
+      targetGkCount = Math.min((nativeGks.length + volanteGks.length), 1);
+    }
+  }
 
+  // MUDANÇA AQUI: Construção da lista de combinações respeitando a trava de último recurso
   let goalkeeperCombos: Player[][] = [];
   if (targetGkCount > 0) {
-    goalkeeperCombos = getCombinations(allAvailableGoalkeepers, targetGkCount);
+    // Se os goleiros nativos sozinhos já suprem a meta de goleiros escalados, ignoramos os volantes
+    if (nativeGks.length >= targetGkCount) {
+      goalkeeperCombos = getCombinations(nativeGks, targetGkCount);
+    } else {
+      // Caso contrário (último recurso), unimos os nativos com os volantes improvisados
+      const mixedGkPool = [...nativeGks, ...volanteGks];
+      goalkeeperCombos = getCombinations(mixedGkPool, targetGkCount);
+    }
   }
 
   for (let iter = 0; iter < numSimulations; iter++) {
@@ -365,7 +381,6 @@ export const generateTeams = (
     const defenderPending = teamsData.flatMap(t => t.reqs.filter(r => isDefenderRole(r.id)).map(r => ({ team: t, req: r })));
     defenderPending.sort((a, b) => getTeamCurrentScore(a.team) - getTeamCurrentScore(b.team));
     for (const { team, req } of defenderPending) {
-
       if (!assignPlayerToRole(team, req)) { validGeneration = false; break; }
     }
     if (!validGeneration) continue;
