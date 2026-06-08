@@ -8,20 +8,20 @@ export const getAvg = (arr: (number | undefined)[]) => {
 export const scoreDefensor = (p: Player) => {
   if (p.position === 'MEIA_OFENSIVO') return getAvg([p.stats.mei_def_posicionamentoMarcacao, p.stats.mei_def_interceptacao, p.stats.geral_recomposicaoVelocidadeVigor]);
   if (p.position === 'DEFENSOR') return getAvg([p.stats.def_posicionamentoMarcacao, p.stats.def_interceptacao, p.stats.geral_recomposicaoVelocidadeVigor]);
-  return 0.5;
+  return 3;
 };
 
 export const scoreAtacante = (p: Player) => {
   if (p.position === 'ATACANTE') return getAvg([p.stats.ata_corpoPosicionamento, p.stats.ata_finalizacaoPassePivo, p.stats.geral_recomposicaoVelocidadeVigor]);
   if (p.position === 'MEIA_OFENSIVO') return getAvg([p.stats.mei_of_dribleArrancada, p.stats.mei_of_finalizacao, p.stats.geral_recomposicaoVelocidadeVigor]);
-  return 0.5;
+  return 3;
 };
 
 export const scoreMeiaDefensivo = (p: Player) => {
   if (p.position === 'MEIA_DEFENSIVO') return getAvg([p.stats.mei_def_sairPressao, p.stats.mei_def_posicionamentoMarcacao, p.stats.mei_def_interceptacao, p.stats.mei_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);
-  if (p.position === 'MEIA_OFENSIVO') return getAvg([p.stats.mei_def_sairPressao, p.stats.mei_def_posicionamentoMarcacao, p.stats.mei_def_interceptacao, p.stats.mei_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);  
+  if (p.position === 'MEIA_OFENSIVO') return getAvg([getAvg([p.stats.mei_def_sairPressao, p.stats.mei_def_posicionamentoMarcacao, p.stats.mei_def_interceptacao, p.stats.mei_protecaoVisaoPasse]), p.stats.geral_recomposicaoVelocidadeVigor]);
   if (p.position === 'DEFENSOR') return getAvg([p.stats.def_sec_sairPressao, p.stats.def_posicionamentoMarcacao, p.stats.def_interceptacao, p.stats.def_sec_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);  
-  return 0.5;
+  return 3;
 };
 
 export const scoreMeia = (p: Player) => {
@@ -31,14 +31,14 @@ export const scoreMeia = (p: Player) => {
     const base = getAvg([p.stats.mei_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);
     return getAvg([off, def, base]);
   }
-  return 0.5;
+  return 3;
 };
 
 export const scoreMeiaOfensivo = (p: Player) => {
   if (p.position === 'MEIA_OFENSIVO') return getAvg([p.stats.mei_of_finalizacao, p.stats.mei_of_dribleArrancada, p.stats.mei_of_passeGolTabela, p.stats.mei_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);
   if (p.position === 'MEIA_DEFENSIVO') return getAvg([p.stats.mei_of_finalizacao, p.stats.mei_of_dribleArrancada, p.stats.mei_of_passeGolTabela, p.stats.mei_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);
   if (p.position === 'ATACANTE') return getAvg([p.stats.ata_finalizacaoPassePivo, p.stats.ata_sec_dribleArrancada, p.stats.ata_sec_passeGolTabela, p.stats.mei_protecaoVisaoPasse, p.stats.geral_recomposicaoVelocidadeVigor]);
-  return 0.5;
+  return 3;
 };
 
 export const scoreGoalkeeper = (p: Player, forceLowStats: boolean = false) => {
