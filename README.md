@@ -68,3 +68,4 @@ npm run deploy
 ---
 Desenvolvido para facilitar a organização da sua pelada semanal! 🏃‍♂️💨
 
+Sempre que for sugerir ou fazer mudanças leia primeiro o "instructions.md"
