@@ -1,82 +1,70 @@
-# React + TypeScript + Vite
+# ⚽ Balanceador de Times
 
-## Deploy
+Uma aplicação web moderna para organizar partidas esportivas, permitindo cadastrar jogadores com diferentes níveis de habilidade e posições, e gerar times equilibrados automaticamente.
 
-Use these commands to publish the current `main` branch to GitHub Pages:
+## 🚀 Funcionalidades
 
-- `npm install`
-- `npm run deploy`
+- **Cadastro de Jogadores**: Adicione jogadores com nome, nível de habilidade (1 a 5 estrelas) e posição.
+- **Gerenciamento de Lista**: Edite ou remova jogadores facilmente.
+- **Algoritmo de Equilíbrio**: Gera times balanceados levando em conta a média de nível técnico.
+- **Interface Responsiva**: Design moderno e adaptável para dispositivos móveis e desktop.
+- **Persistência Local**: Seus dados são salvos no navegador para não perdê-los ao recarregar.
 
-The `deploy` script will build the app and automatically clear the local `gh-pages` cache before publishing `dist/`.
+## 🛠️ Tecnologias Utilizadas
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+- [React 19](https://react.dev/) - Biblioteca para interfaces de usuário.
+- [TypeScript](https://www.typescriptlang.org/) - Tipagem estática para maior segurança.
+- [Vite](https://vitejs.dev/) - Bundler rápido para desenvolvimento.
+- [Zustand](https://zustand-demo.pmnd.rs/) - Gerenciamento de estado leve e eficiente.
+- [Tailwind CSS](https://tailwindcss.com/) - Estilização moderna via utilitários.
+- [Lucide React](https://lucide.dev/) - Biblioteca de ícones.
 
-Currently, two official plugins are available:
+## 📂 Estrutura de Arquivos
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```text
+src/
+├── assets/          # Imagens e recursos estáticos
+├── components/      # Componentes reutilizáveis da interface
+│   ├── PlayerCard.tsx    # Card de exibição do jogador
+│   ├── PlayerForm.tsx    # Formulário de cadastro/edição
+│   ├── PlayersTab.tsx    # Aba de listagem de jogadores
+│   ├── SimulationTab.tsx # Aba de geração de times
+│   └── StarRating.tsx    # Componente de avaliação por estrelas
+├── store/           # Estado global (Zustand)
+│   └── usePlayerStore.ts # Gerenciamento de jogadores e times
+├── types/           # Definições de interfaces e tipos TypeScript
+│   └── index.ts
+├── utils/           # Lógica de negócio e algoritmos
+│   └── balancer.ts       # Algoritmo de balanceamento de equipes
+├── App.tsx          # Componente principal e layout
+└── main.tsx         # Ponto de entrada da aplicação
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🔧 Como Executar
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+1. Instale as dependências:
+   ```bash
+   npm install
+   ```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+2. Inicie o servidor de desenvolvimento:
+   ```bash
+   npm run dev
+   ```
+
+3. Para build de produção:
+   ```bash
+   npm run build
+   ```
+
+## 🚀 Deploy
+
+O projeto está configurado para deploy automático no GitHub Pages:
+
+```bash
+npm run deploy
 ```
+
+---
+Desenvolvido para facilitar a organização da sua pelada semanal! 🏃‍♂️💨
+
