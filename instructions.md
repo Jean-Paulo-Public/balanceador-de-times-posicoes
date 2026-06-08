@@ -16,7 +16,11 @@ src/
 ├── types/           # Definições de interfaces e tipos TypeScript
 │   └── index.ts
 ├── utils/           # Lógica de negócio e algoritmos
-│   └── balancer.ts       # Algoritmo de balanceamento de equipes
+│   ├── balancer.ts       # Algoritmo de balanceamento de equipes
+│   └── balancer/    # Módulo do Motor de Equilíbrio
+│       ├── formations.ts # Definições de sistemas táticos
+│       ├── helpers.ts    # Utilitários de lógica
+│       └── scoring.ts    # Fórmulas de desempenho
 ├── App.tsx          # Componente principal e layout
 └── main.tsx         # Ponto de entrada da aplicação
 ```

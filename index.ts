@@ -1,7 +1,7 @@
-import type { Player, Team, SimulationResult, FormationType } from '../types';
-import { getAvg, scoreGoalkeeper, getLineScoreByPosition, scoreMeia } from './balancer/scoring';
-import { getCombinations, isImprovisationAllowed, getRoleLabels } from './balancer/helpers';
-import { Formations } from './balancer/formations';
+import type { Player, Team, SimulationResult, FormationType } from '../../types';
+import { getAvg, scoreGoalkeeper, getLineScoreByPosition, scoreMeia } from './scoring';
+import { getCombinations, isImprovisationAllowed, getRoleLabels } from './helpers';
+import { Formations } from './formations';
 
 interface ExtendedSimulationResult extends SimulationResult {
   benchToTitularDiff: number;
