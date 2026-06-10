@@ -6,6 +6,7 @@ import { Formations } from './balancer/formations';
 interface ExtendedSimulationResult extends SimulationResult {
   benchToTitularDiff: number;
   benchEquilibrium: number;
+  defensiveEquilibrium: number;
 }
 
 export const generateTeams = (
@@ -22,6 +23,22 @@ export const generateTeams = (
 
   const results: ExtendedSimulationResult[] = [];
   const formationKeys: (keyof typeof Formations)[] = ['EQUILIBRADA', 'OFENSIVA', 'DEFENSIVA', 'CONTENCAO'];
+
+  // Funções auxiliares para identificação de papéis táticos
+  const isAttackRole = (reqId: string) => {
+    const lower = reqId.toLowerCase();
+    return lower.includes('atacante') || lower.includes('meia ofensivo') || (lower.includes('meia') && !lower.includes('defensivo') && !lower.includes('defensor') && !lower.includes('volante'));
+  };
+
+  const isDefenderRole = (reqId: string) => {
+    const lower = reqId.toLowerCase();
+    return lower.includes('defensor');
+  };
+
+  const isDefensiveMidRole = (reqId: string) => {
+    const lower = reqId.toLowerCase();
+    return lower.includes('volante') || lower.includes('meia defensivo');
+  };
 
   const teamAddPlayer = (
     team: { players: Team['players'] },
@@ -169,21 +186,6 @@ export const generateTeams = (
       return true;
     };
 
-    const isAttackRole = (reqId: string) => {
-      const lower = reqId.toLowerCase();
-      return lower.includes('atacante') || lower.includes('meia ofensivo') || (lower.includes('meia') && !lower.includes('defensivo') && !lower.includes('defensor') && !lower.includes('volante'));
-    };
-
-    const isDefenderRole = (reqId: string) => {
-      const lower = reqId.toLowerCase();
-      return lower.includes('defensor');
-    };
-
-    const isDefensiveMidRole = (reqId: string) => {
-      const lower = reqId.toLowerCase();
-      return lower.includes('volante') || lower.includes('meia defensivo');
-    };
-
     let validGeneration = true;
 
     const attackPending = teamsData.flatMap(t => t.reqs.filter(r => isAttackRole(r.id)).map(r => ({ team: t, req: r })));
@@ -289,6 +291,29 @@ export const generateTeams = (
       }
     }
 
+    // Cálculo do Equilíbrio Defensivo (Média de overall de Defensores + Volantes)
+    const defOveralls = teamsData.map(t => {
+      const defPlayers = t.players.filter(p => isDefenderRole(p.assignedRole) || isDefensiveMidRole(p.assignedRole));
+      const sumWeightedSkill = defPlayers.reduce((s, p) => {
+        const weight = isDefensiveMidRole(p.assignedRole) ? 0.7 : 1.0;
+        return s + (p.roleScore * weight);
+      }, 0);
+      const avgSkill = defPlayers.length ? sumWeightedSkill / defPlayers.length : 0;
+      let score = (avgSkill / 6) * 100;
+
+      // Aplica pesos baseados no sistema tático para normalizar a expectativa defensiva
+      if (t.tacticalSystem === 'OFENSIVA') score *= 0.8;
+      else if (t.tacticalSystem === 'EQUILIBRADA') score *= 0.9;
+
+      return score;
+    });
+    let defensiveEquilibrium = 0;
+    for (let i = 0; i < defOveralls.length; i++) {
+      for (let j = i + 1; j < defOveralls.length; j++) {
+        defensiveEquilibrium += Math.pow(defOveralls[i] - defOveralls[j], 2);
+      }
+    }
+
     const overalls = teamsData.map(t => t.overall);
     const mean = overalls.reduce((a, b) => a + b, 0) / overalls.length;
     const deviation = Math.sqrt(overalls.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / overalls.length);
@@ -316,13 +341,29 @@ export const generateTeams = (
       totalImprov: totalImprov,
       equilibrium,
       benchToTitularDiff,
-      benchEquilibrium
+      benchEquilibrium,
+      defensiveEquilibrium
     });
   }
 
   results.sort((a, b) => {
     const eqA = a.equilibrium ?? 0;
     const eqB = b.equilibrium ?? 0;
+
+    // Novo Critério: Se o equilíbrio geral estiver dentro de um limite aceitável (<= 100),
+    // priorizamos as simulações com o melhor equilíbrio defensivo (menor diferença entre zagueiros/volantes).
+    const isUnderThresholdA = eqA <= 100;
+    const isUnderThresholdB = eqB <= 100;
+
+    if (isUnderThresholdA && isUnderThresholdB) {
+      if (a.defensiveEquilibrium !== b.defensiveEquilibrium) {
+        return a.defensiveEquilibrium - b.defensiveEquilibrium;
+      }
+    } else if (isUnderThresholdA) {
+      return -1;
+    } else if (isUnderThresholdB) {
+      return 1;
+    }
 
     let tierA = 3;
     if (eqA < 10 && a.totalImprov === 0) tierA = 1;
