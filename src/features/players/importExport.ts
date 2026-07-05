@@ -68,6 +68,7 @@ interface RawPlayerLike {
   isGoalkeeper?: unknown;
   position?: unknown;
   stats?: unknown;
+  pivotFriendly?: unknown;
 }
 
 /**
@@ -97,6 +98,7 @@ export const parseImportedPlayers = (rawText: string): Player[] => {
       isGoalkeeper: typeof raw.isGoalkeeper === 'boolean' ? raw.isGoalkeeper : false,
       position: isValidPosition(raw.position) ? raw.position : 'MEIA',
       stats: normalizeStats(raw.stats as Player['stats'] | undefined),
+      pivotFriendly: typeof raw.pivotFriendly === 'boolean' ? raw.pivotFriendly : false,
     };
   });
 };

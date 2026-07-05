@@ -21,6 +21,7 @@ interface LegacyPlayer {
   isGoalkeeper?: boolean;
   position?: LegacyPosition | Position;
   stats?: Record<string, number | boolean | undefined>;
+  pivotFriendly?: boolean;
 }
 
 const mapPosition = (position: LegacyPosition | Position | undefined): Position => {
@@ -74,6 +75,7 @@ export const migratePlayer = (legacy: LegacyPlayer): Player => ({
   isGoalkeeper: legacy.isGoalkeeper ?? false,
   position: mapPosition(legacy.position),
   stats: migrateStats(legacy.stats),
+  pivotFriendly: legacy.pivotFriendly ?? false,
 });
 
 export const migratePlayers = (legacyPlayers: unknown): Player[] => {

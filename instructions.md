@@ -33,6 +33,13 @@ Meia; o Meia improvisa em qualquer posição. Essa regra vive em `src/engine/imp
 `scoreDefensorRole`/`scoreMeiaRole`/`scoreAtacanteRole` precisam ter um branch para cada posição
 que a matriz de improviso permite, senão o jogador cai numa nota neutra fixa).
 
+O campo `Player.pivotFriendly` (só relevante para Meias) dá um pequeno bônus de pontuação — ver
+`getImprovisationBonus` em `src/engine/improvisation.ts` — quando esse Meia disputa uma vaga de
+Atacante por improviso, para priorizá-lo sobre outro Meia de nível parecido. O bônus é
+propositalmente pequeno (não deve superar uma diferença real de nível) e só se aplica ao par
+Meia→Atacante. O rótulo exibido nesse caso passa a ser "Atacante (pivô)" em vez de "Atacante
+(improvisado)" (`getRoleLabels`, parâmetro `isPivotFit`).
+
 O equilíbrio da defesa entre os times (para nenhum time ficar "goleável") é calculado por
 `defensiveContribution()` em `scoring.ts` e agregado por time em `generateTeams.ts`
 (`defensiveOverall`). Esse é o critério de ordenação PRIMÁRIO dos cenários simulados — só usa o
@@ -40,6 +47,11 @@ equilíbrio geral como critério secundário/desempate. Ao alterar pesos ou crit
 rode `npm run test` (Vitest) para garantir que os cenários difíceis em
 `src/engine/generateTeams.test.ts` continuam passando, e ajuste os limites do teste com dados
 reais se o comportamento mudar de propósito.
+
+As "Observações do Time" (pontos de atenção exibidos na tela de simulação) são geradas por
+`generateTeamObservations()` em `src/engine/observations.ts`, a partir do `Team` já montado — é
+puramente diagnóstico/texto, não influencia o balanceamento em si. Novas heurísticas de observação
+devem ser adicionadas ali, e exibidas em `SimulationTab.tsx` (bloco "Observações do Time").
 
 Sempre que adicionar um cenário de teste novo, use os geradores de elenco em
 `src/engine/testFixtures.ts` como base.
@@ -67,6 +79,21 @@ Agente de IA, depois de qualquer alteração estrutural (mexer em `package.json`
 `npm run test`. Se o ambiente onde você está rodando essas checagens não for confiável (ex.: sync
 de arquivo instável, node_modules incompleto), valide numa cópia limpa antes de reportar sucesso —
 não basta o código parecer certo, o `npm run build` real precisa passar.
+
+**Cuidado ao sincronizar para uma cópia limpa com `rsync`:** se você (agente de IA) copiar o projeto
+para outro diretório para validar (ex.: `rsync -a origem/ destino/`), use sempre a flag
+`--checksum`. Sem ela, o `rsync` decide se copia um arquivo comparando só tamanho e data de
+modificação — e nesse ambiente (pasta do Windows montada num sandbox Linux) já aconteceu de um
+arquivo editado ficar com o mesmo tamanho/mtime aparente do arquivo antigo, fazendo o `rsync` pular
+a cópia e a validação rodar silenciosamente contra código desatualizado (ou corrompido). O comando
+seguro é `rsync -a --checksum --delete --exclude node_modules --exclude dist --exclude .git origem/ destino/`.
+
+**Cuidado com corrupção/truncamento ao editar arquivos nessa pasta montada do Windows:** as
+ferramentas de escrita de arquivo já truncaram arquivos no meio (cortando o resto do conteúdo sem
+avisar) várias vezes nesse projeto — inclusive `.ts`, `.tsx` e `.css`. Depois de qualquer edição
+importante, verifique o arquivo final com algo como `wc -c arquivo` + `tail -c 200 arquivo` (o
+arquivo não pode terminar no meio de uma expressão) antes de confiar que a edição funcionou. Na
+dúvida, reescreva o arquivo inteiro em vez de aplicar um diff pequeno.
 
 ## 🚀 Deploy
 

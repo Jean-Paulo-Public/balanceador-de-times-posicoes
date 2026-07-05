@@ -17,6 +17,7 @@ export const makePlayer = (
     isGoalkeeper: false,
     position,
     stats: createStats(level),
+    pivotFriendly: false,
     ...overrides,
   };
 };

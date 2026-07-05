@@ -36,6 +36,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const [isCaptain, setIsCaptain] = useState(editingPlayer?.isCaptain || false);
   const [isGoalkeeper, setIsGoalkeeper] = useState(editingPlayer?.isGoalkeeper || false);
   const [position, setPosition] = useState<Position>(editingPlayer?.position || 'DEFENSOR');
+  const [pivotFriendly, setPivotFriendly] = useState(editingPlayer?.pivotFriendly || false);
   const [stats, setStats] = useState<PlayerStats>(normalizeStats(editingPlayer?.stats));
 
   const updateStat = (key: keyof PlayerStats, value: number) => {
@@ -61,6 +62,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
       isGoalkeeper,
       position,
       stats,
+      pivotFriendly: position === 'MEIA' ? pivotFriendly : false,
     };
 
     if (editingPlayer) {
@@ -122,6 +124,22 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
             ))}
           </div>
           <p className={styles.helpText}>{POSITION_HELP[position]}</p>
+
+          {position === 'MEIA' && (
+            <label className="checkbox-group" style={{ marginTop: 'var(--space-3)' }}>
+              <input
+                type="checkbox"
+                checked={pivotFriendly}
+                onChange={e => setPivotFriendly(e.target.checked)}
+              />
+              Facilidade em ser pivô
+            </label>
+          )}
+          {position === 'MEIA' && pivotFriendly && (
+            <p className={styles.helpText}>
+              Esse Meia terá prioridade sobre os demais para improvisar como Atacante quando o time precisar, desde que isso não custe muito overall.
+            </p>
+          )}
         </div>
 
         <div className={styles.divider}>

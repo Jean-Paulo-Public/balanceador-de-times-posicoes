@@ -3,7 +3,7 @@ import type { Player } from '../../domain/types';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { posToLabel } from '../../domain/playerAttributes';
 import { scoreNativePosition, scoreMeiaRole, scoreDefensorRole, scoreAtacanteRole } from '../../engine/scoring';
-import { Shield, Users, Swords, Edit, Trash2, ShieldAlert } from 'lucide-react';
+import { Shield, Users, Swords, Edit, Trash2, ShieldAlert, Target } from 'lucide-react';
 import styles from './PlayerCard.module.css';
 
 interface PlayerCardProps {
@@ -38,10 +38,12 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
           <span className={`${styles.name} ${!player.active ? styles.nameStrike : ''}`}>{player.name}</span>
           {player.isCaptain && <span title="Capitão">👑</span>}
           {player.isGoalkeeper && <span title="Goleiro (Emergência)"><ShieldAlert size={16} color="var(--color-info)" /></span>}
+          {player.pivotFriendly && <span title="Facilidade em ser pivô"><Target size={15} color="var(--color-accent)" /></span>}
         </div>
 
         <div className={styles.metaRow}>
           <span className={`chip ${visual.chip}`}>{visual.icon} {posToLabel(player.position)}</span>
+          {player.pivotFriendly && <span className="chip chip-accent">Pivô</span>}
         </div>
 
         <div className={styles.overalls}>

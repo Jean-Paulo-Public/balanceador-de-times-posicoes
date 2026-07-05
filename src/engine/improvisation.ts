@@ -1,4 +1,4 @@
-import type { Position } from '../domain/types';
+import type { Player, Position } from '../domain/types';
 import { posToLabel } from '../domain/playerAttributes';
 import type { RoleFamily } from '../domain/formations';
 
@@ -15,14 +15,31 @@ export const isImprovisationAllowed = (playerPosition: Position, roleFamily: Rol
   return false; // Defensor->Atacante ou Atacante->Defensor: não permitido.
 };
 
+/**
+ * Bônus pequeno (numa escala de estrelas 1-6) aplicado só na hora de escolher
+ * QUEM entre os Meias disponíveis vira Atacante por improviso. Existe pra dar
+ * prioridade ao Meia marcado como "Facilidade em ser pivô" sobre outro Meia
+ * qualquer, sem porém se sobrepor a uma diferença de nível real e grande —
+ * por isso o valor é deliberadamente pequeno.
+ */
+const PIVOT_IMPROVISATION_BONUS = 0.4;
+
+export const getImprovisationBonus = (player: Player, roleFamily: RoleFamily): number => {
+  if (roleFamily === 'ATACANTE' && player.position === 'MEIA' && player.pivotFriendly) {
+    return PIVOT_IMPROVISATION_BONUS;
+  }
+  return 0;
+};
+
 export const getRoleLabels = (
   family: RoleFamily,
   improvised: boolean,
-  isGoalkeeperRole: boolean = false
+  isGoalkeeperRole: boolean = false,
+  isPivotFit: boolean = false
 ): { roleShort: string; roleLabel: string } => {
   if (isGoalkeeperRole) return { roleShort: 'GK', roleLabel: 'Goleiro' };
 
-  const suffix = improvised ? ' (improvisado)' : '';
+  const suffix = improvised ? (isPivotFit ? ' (pivô)' : ' (improvisado)') : '';
   if (family === 'DEFENSOR') return { roleShort: 'DEF', roleLabel: `Defensor${suffix}` };
   if (family === 'ATACANTE') return { roleShort: 'ATA', roleLabel: `Atacante${suffix}` };
   return { roleShort: 'MEI', roleLabel: `Meia${suffix}` };

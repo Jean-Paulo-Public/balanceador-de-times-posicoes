@@ -16,6 +16,8 @@ interface FunPlayerSeed {
   level: number;
   isGoalkeeper?: boolean;
   recomposicao?: number;
+  /** Só relevante para Meias — ver `Player.pivotFriendly`. */
+  pivotFriendly?: boolean;
 }
 
 const FUN_ROSTER_SEED: FunPlayerSeed[] = [
@@ -40,8 +42,8 @@ const FUN_ROSTER_SEED: FunPlayerSeed[] = [
   { name: 'Toni Kroos', position: 'MEIA', level: 5 },
   { name: 'Casemiro', position: 'MEIA', level: 5, recomposicao: 6 },
   { name: 'Pedri', position: 'MEIA', level: 4 },
-  { name: 'Jude Bellingham', position: 'MEIA', level: 5 },
-  { name: 'Kaká', position: 'MEIA', level: 5, recomposicao: 2 },
+  { name: 'Jude Bellingham', position: 'MEIA', level: 5, pivotFriendly: true },
+  { name: 'Kaká', position: 'MEIA', level: 5, recomposicao: 2, pivotFriendly: true },
   { name: 'Zinédine Zidane', position: 'MEIA', level: 6, recomposicao: 2 },
 
   // Atacantes
@@ -67,4 +69,5 @@ export const buildFunRoster = (): Player[] =>
       ...createStats(seed.level),
       ...(seed.recomposicao !== undefined ? { geral_recomposicaoDefensiva: seed.recomposicao } : {}),
     },
+    pivotFriendly: seed.pivotFriendly ?? false,
   }));

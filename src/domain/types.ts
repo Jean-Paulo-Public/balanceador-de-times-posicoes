@@ -55,6 +55,13 @@ export interface Player {
   isGoalkeeper: boolean;
   position: Position;
   stats: PlayerStats;
+  /**
+   * Só faz sentido para Meias: indica que o jogador se sai bem quando precisa
+   * segurar bola de costas pro gol / atuar de pivô. Usado para priorizar esse
+   * jogador em improvisos como Atacante, em vez de outro Meia qualquer — desde
+   * que a diferença de nível não seja grande (ver getImprovisationBonus).
+   */
+  pivotFriendly: boolean;
 }
 
 /** Sistemas táticos suportados. QUALQUER sorteia um dos três a cada simulação. */

@@ -3,8 +3,9 @@ import { usePlayerStore } from '../../store/usePlayerStore';
 import type { FormationType, SimulationResult } from '../../domain/types';
 import { FORMATION_LABELS } from '../../domain/formations';
 import { generateTeams } from '../../engine/generateTeams';
+import { generateTeamObservations } from '../../engine/observations';
 import { FieldMap } from './FieldMap';
-import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert, Eye } from 'lucide-react';
 import styles from './SimulationTab.module.css';
 
 const MAX_TEAMS = 4;
@@ -158,7 +159,9 @@ export function SimulationTab() {
             </div>
 
             <div className={styles.teamsList}>
-              {currentSimulation.teams.map((team) => (
+              {currentSimulation.teams.map((team) => {
+                const observations = generateTeamObservations(team, currentSimulation.teams);
+                return (
                 <div key={team.id} className={`glass-panel ${styles.teamCard}`}>
                   <div className={styles.teamHeader}>
                     <div>
@@ -229,8 +232,26 @@ export function SimulationTab() {
                       </div>
                     </div>
                   )}
+
+                  {observations.length > 0 && (
+                    <div className={styles.observationsSection}>
+                      <div className={styles.observationsHeader}>
+                        <Eye size={14} color="var(--color-text-muted)" />
+                        <h4 className={styles.observationsTitle}>Observações do Time</h4>
+                      </div>
+                      <div className={styles.observationsList}>
+                        {observations.map((obs, idx) => (
+                          <div key={idx} className={styles.observationItem}>
+                            <AlertTriangle size={14} className={styles.observationIcon} />
+                            <span>{obs}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

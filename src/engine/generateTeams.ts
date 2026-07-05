@@ -1,6 +1,6 @@
 import type { Player, Team, TeamSlotPlayer, SimulationResult, FormationType } from '../domain/types';
 import { scoreGoalkeeper, scoreMeiaRole, scoreNativePosition, defensiveContribution } from './scoring';
-import { isImprovisationAllowed, getRoleLabels, posToLabel } from './improvisation';
+import { isImprovisationAllowed, getImprovisationBonus, getRoleLabels, posToLabel } from './improvisation';
 import { getCombinations } from './combinatorics';
 import { Formations, type FormationSlot, type RoleFamily } from '../domain/formations';
 
@@ -39,7 +39,8 @@ const addPlayerToTeam = (
   slot: FormationSlot,
   improvised: boolean
 ) => {
-  const labels = getRoleLabels(slot.family, improvised);
+  const isPivotFit = improvised && slot.family === 'ATACANTE' && player.position === 'MEIA' && player.pivotFriendly;
+  const labels = getRoleLabels(slot.family, improvised, false, isPivotFit);
   team.players.push({
     player,
     assignedRole: slot.id,
@@ -55,10 +56,13 @@ const selectBestPlayerIndex = (slot: FormationSlot, pool: Player[], noise: numbe
 
   for (let i = 0; i < pool.length; i++) {
     const player = pool[i];
-    const score = slot.calcScore(player) + noise;
     if (slot.allowedOriginalPositions.includes(player.position)) {
+      const score = slot.calcScore(player) + noise;
       if (score > bestNativeScore) { bestNativeScore = score; bestNativeIdx = i; }
     } else if (isImprovisationAllowed(player.position, slot.family)) {
+      // Bônus pequeno pro Meia "pivô" ganhar a vaga de Atacante frente a outro
+      // Meia com nível parecido — nunca chega a superar uma diferença de nível real.
+      const score = slot.calcScore(player) + noise + getImprovisationBonus(player, slot.family);
       if (score > bestFallbackScore) { bestFallbackScore = score; bestFallbackIdx = i; }
     }
   }
