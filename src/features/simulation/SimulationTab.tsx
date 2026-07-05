@@ -5,21 +5,19 @@ import { FORMATION_LABELS } from '../../domain/formations';
 import { generateTeams } from '../../engine/generateTeams';
 import { FieldMap } from './FieldMap';
 import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert } from 'lucide-react';
+import styles from './SimulationTab.module.css';
 
 const MAX_TEAMS = 4;
 const suggestTeams = (activePlayersCount: number) => (activePlayersCount <= 17 ? 2 : 3);
 
 const overallColor = (value: number) =>
-  value > 75 ? 'var(--secondary)' : value > 50 ? 'var(--star-active)' : 'var(--danger)';
+  value > 75 ? 'var(--color-primary)' : value > 50 ? 'var(--color-accent)' : 'var(--color-danger)';
 
 export function SimulationTab() {
   const { players, neverScaleGoalkeepers, setNeverScaleGoalkeepers, maxSixLinePlayers, setMaxSixLinePlayers } = usePlayerStore();
 
   const activePlayersCount = players.filter(p => p.active).length;
 
-  // `desiredNumTeams` guarda a escolha do usuário. `numTeams` é sempre derivado dela,
-  // limitado ao que o elenco atual comporta — nunca sobrescreve a escolha manual do
-  // usuário "de verdade": se o elenco voltar a crescer, a escolha original volta a valer.
   const [desiredNumTeams, setDesiredNumTeams] = useState<number>(() => suggestTeams(activePlayersCount));
   const [teamFormations, setTeamFormations] = useState<FormationType[]>(() => Array(MAX_TEAMS).fill('QUALQUER'));
   const [results, setResults] = useState<SimulationResult[]>([]);
@@ -50,15 +48,15 @@ export function SimulationTab() {
     <div className="animate-fade-in">
       <div className="header-top">
         <h1>Simular Partidas</h1>
-        <p style={{ color: 'var(--text-muted)' }}>Gere as equipes mais equilibradas, com foco na defesa</p>
+        <p>Gere as equipes mais equilibradas, com foco na defesa</p>
       </div>
 
       <div style={{ padding: '20px' }}>
-        <div className="glass-panel" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1, minWidth: '200px' }}>
+        <div className={`glass-panel ${styles.controlsPanel}`}>
+          <div className={styles.controlsGrid}>
+            <div className={styles.formationsGroup}>
               {activeFormations.map((teamFormation, index) => (
-                <div key={index} className="input-group" style={{ minWidth: '180px' }}>
+                <div key={index} className={`input-group ${styles.formationField}`}>
                   <label>Formação Time {index + 1}</label>
                   <select
                     className="input-field"
@@ -78,7 +76,7 @@ export function SimulationTab() {
               ))}
             </div>
 
-            <div className="input-group" style={{ marginBottom: 0, width: '120px' }}>
+            <div className={`input-group ${styles.teamsField}`}>
               <label>Qtd. de Times</label>
               <select
                 className="input-field"
@@ -90,15 +88,13 @@ export function SimulationTab() {
                 <option value={4}>4 Times</option>
               </select>
               {desiredNumTeams > maxFeasibleTeams && (
-                <p style={{ fontSize: '0.72rem', color: 'var(--danger)', marginTop: '4px' }}>
-                  Usando {numTeams} por falta de jogadores.
-                </p>
+                <p className={styles.teamsWarning}>Usando {numTeams} por falta de jogadores.</p>
               )}
             </div>
 
-            <div className="input-group" style={{ marginBottom: 0, minWidth: '240px' }}>
+            <div className={`input-group ${styles.optionsField}`}>
               <label style={{ display: 'block', marginBottom: '8px' }}>Opções</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div className={styles.optionsList}>
                 <label className="checkbox-group">
                   <input
                     type="checkbox"
@@ -120,122 +116,90 @@ export function SimulationTab() {
             </div>
           </div>
 
-          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+          <div className={styles.footerRow}>
+            <span className={styles.footerHint}>
               {activePlayersCount} / {requiredPlayers} jogadores ativos (Mínimo de linha atingido)
             </span>
-            <button
-              className="btn"
-              onClick={handleSimulate}
-              disabled={activePlayersCount < requiredPlayers || isSimulating}
-            >
+            <button className="btn" onClick={handleSimulate} disabled={activePlayersCount < requiredPlayers || isSimulating}>
               <Play size={18} /> {isSimulating ? 'Simulando...' : 'Gerar Times'}
             </button>
           </div>
           {activePlayersCount < requiredPlayers && (
-            <p style={{ fontSize: '0.8rem', color: 'var(--danger)', marginTop: '8px' }}>
+            <p className={styles.errorHint}>
               São necessários pelo menos {requiredPlayers} jogadores ativos para preencher as linhas de {numTeams} times (6 por time). Cadastre ou ative mais jogadores!
             </p>
           )}
         </div>
 
         {results.length > 0 && currentSimulation && isImbalanced && (
-          <div style={{
-            marginBottom: '20px', padding: '16px', background: 'rgba(255, 165, 0, 0.1)',
-            border: '1px solid var(--star-active)', borderRadius: '12px', display: 'flex',
-            alignItems: 'center', gap: '12px', color: 'var(--star-active)'
-          }}>
+          <div className={styles.imbalanceBanner}>
             <AlertTriangle size={22} style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: '0.92rem', lineHeight: '1.4' }}>
-              <strong>Aviso de Equilíbrio:</strong> Os jogadores cadastrados atualmente não são os ideais para a montagem de um time equilibrado (ou defensivamente equilibrado) neste cenário. Recomendamos cadastrar mais goleiros, defensores ou meias para refinar os potes técnicos.
+            <span className={styles.imbalanceText}>
+              <strong style={{ color: 'var(--color-accent)' }}>Aviso de Equilíbrio:</strong> os jogadores cadastrados atualmente não são os ideais para a montagem de um time equilibrado (ou defensivamente equilibrado) neste cenário. Recomendamos cadastrar mais goleiros, defensores ou meias para refinar os potes técnicos.
             </span>
           </div>
         )}
 
         {results.length > 0 && currentSimulation && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <button
-                className="btn-secondary"
-                style={{ padding: '8px', borderRadius: '50%' }}
-                onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-                disabled={currentIndex === 0}
-              >
+            <div className={styles.scenarioNav}>
+              <button className={`btn-secondary ${styles.navBtn}`} onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={currentIndex === 0}>
                 <ChevronLeft size={24} />
               </button>
 
-              <div style={{ textAlign: 'center' }}>
-                <h3 style={{ margin: 0, color: 'var(--primary)' }}>Cenário {currentIndex + 1}</h3>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>de {results.length} simulações</span>
+              <div className={styles.scenarioTitle}>
+                <h3>Cenário {currentIndex + 1}</h3>
+                <span className={styles.scenarioSubtitle}>de {results.length} simulações</span>
               </div>
 
-              <button
-                className="btn-secondary"
-                style={{ padding: '8px', borderRadius: '50%' }}
-                onClick={() => setCurrentIndex(prev => Math.min(results.length - 1, prev + 1))}
-                disabled={currentIndex === results.length - 1}
-              >
+              <button className={`btn-secondary ${styles.navBtn}`} onClick={() => setCurrentIndex(prev => Math.min(results.length - 1, prev + 1))} disabled={currentIndex === results.length - 1}>
                 <ChevronRight size={24} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className={styles.teamsList}>
               {currentSimulation.teams.map((team) => (
-                <div key={team.id} className="glass-panel" style={{ padding: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                <div key={team.id} className={`glass-panel ${styles.teamCard}`}>
+                  <div className={styles.teamHeader}>
                     <div>
-                      <h3 style={{ margin: 0 }}>{team.name}</h3>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <h3 className={styles.teamName}>{team.name}</h3>
+                      <span className={styles.teamSystem}>
                         Sistema: {FORMATION_LABELS[team.tacticalSystem as keyof typeof FORMATION_LABELS] ?? team.tacticalSystem}
                       </span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Overall</div>
-                        <div style={{ background: `linear-gradient(135deg, ${overallColor(team.overall)}, transparent)`, padding: '4px 12px', borderRadius: '16px', fontWeight: 'bold' }}>
-                          {team.overall}
-                        </div>
+                    <div className={styles.teamBadges}>
+                      <div className={styles.badge}>
+                        <div className={styles.badgeLabel}>Overall</div>
+                        <div className={styles.badgeValue} style={{ background: overallColor(team.overall) }}>{team.overall}</div>
                       </div>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title="Quão difícil é fazer gol nesse time">Defesa</div>
-                        <div style={{ background: `linear-gradient(135deg, ${overallColor(team.defensiveOverall)}, transparent)`, padding: '4px 12px', borderRadius: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <ShieldAlert size={14} /> {team.defensiveOverall}
+                      <div className={styles.badge}>
+                        <div className={styles.badgeLabel} title="Quão difícil é fazer gol nesse time">Defesa</div>
+                        <div className={styles.badgeValue} style={{ background: overallColor(team.defensiveOverall) }}>
+                          <ShieldAlert size={13} /> {team.defensiveOverall}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'space-between', gap: '16px' }}>
-                    <div style={{ flex: '0 1 auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className={styles.teamBody}>
+                    <div className={styles.playersColumn}>
                       {team.players.map((tp, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', padding: '2px 0' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                              <span style={{ fontWeight: 500 }}>{tp.player.name}</span>
+                        <div key={idx} className={styles.playerRow}>
+                          <div>
+                            <div className={styles.playerNameRow}>
+                              <span className={styles.playerName}>{tp.player.name}</span>
                               {tp.improvisationPenalty > 0 && (
-                                <span title="Posição Improvisada">
-                                  <AlertTriangle size={13} color="var(--star-active)" />
-                                </span>
+                                <span title="Posição Improvisada"><AlertTriangle size={13} color="var(--color-accent)" /></span>
                               )}
                               {tp.player.isCaptain && <span title="Capitão" style={{ fontSize: '0.85rem' }}>👑</span>}
                               {tp.roleShort === 'GK' && (
-                                <span title="Goleiro">
-                                  <ShieldAlert size={13} color="var(--primary)" />
-                                </span>
+                                <span title="Goleiro"><ShieldAlert size={13} color="var(--color-info)" /></span>
                               )}
                             </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                                OVR: {Math.round((tp.roleScore / 6) * 100)}
-                              </span>
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                              {(tp.roleShort || '').length > 0 && (
-                                <span style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700 }}>{tp.roleShort}</span>
-                              )}
-                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{tp.roleLabel || tp.assignedRole}</span>
+                            <div className={styles.playerOvr}>OVR: {Math.round((tp.roleScore / 6) * 100)}</div>
+                            <div className={styles.playerRoleRow}>
+                              {(tp.roleShort || '').length > 0 && <span className={styles.roleTag}>{tp.roleShort}</span>}
+                              <span className={styles.roleLabel}>{tp.roleLabel || tp.assignedRole}</span>
                             </div>
                           </div>
                         </div>
@@ -246,28 +210,20 @@ export function SimulationTab() {
                   </div>
 
                   {team.bench.length > 0 && (
-                    <div style={{ marginTop: '14px', padding: '10px 0 0 0', borderTop: '1px solid var(--border-color)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                          Banco de Reservas
-                        </h4>
+                    <div className={styles.benchSection}>
+                      <div className={styles.benchHeader}>
+                        <h4 className={styles.benchTitle}>Banco de Reservas</h4>
                         {team.benchOverall !== undefined && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Média do Banco:</span>
-                            <span style={{
-                              fontSize: '0.75rem', fontWeight: 'bold',
-                              background: `linear-gradient(135deg, ${overallColor(team.benchOverall)}, transparent)`,
-                              padding: '2px 8px', borderRadius: '10px', color: 'var(--text)'
-                            }}>
-                              {team.benchOverall}
-                            </span>
+                          <div className={styles.benchAvg}>
+                            <span className={styles.benchAvgLabel}>Média do Banco:</span>
+                            <span className={styles.benchAvgValue} style={{ background: overallColor(team.benchOverall) }}>{team.benchOverall}</span>
                           </div>
                         )}
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      <div className={styles.benchList}>
                         {team.bench.map((bp, idx) => (
-                          <span key={idx} style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 8px', borderRadius: '8px', fontSize: '0.8rem', border: '1px solid rgba(255,255,255,0.04)' }}>
-                            {bp.player.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.70rem' }}>({bp.roleShort || 'LINHA'})</span>
+                          <span key={idx} className={styles.benchChip}>
+                            {bp.player.name} <span className={styles.benchChipRole}>({bp.roleShort || 'LINHA'})</span>
                           </span>
                         ))}
                       </div>
@@ -280,12 +236,12 @@ export function SimulationTab() {
         )}
 
         {results.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
-          <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', borderColor: 'var(--danger)', marginTop: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', color: 'var(--danger)' }}>
+          <div className={`glass-panel ${styles.stateCard}`} style={{ borderColor: 'var(--color-danger)' }}>
+            <div className={styles.stateIcon} style={{ color: 'var(--color-danger)' }}>
               <AlertTriangle size={32} />
             </div>
-            <h3 style={{ color: 'var(--danger)', marginBottom: '12px', marginTop: 0 }}>⚠️ Nenhuma escalação viável encontrada</h3>
-            <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', maxWidth: '520px', margin: '0 auto', fontSize: '0.92rem' }}>
+            <h3 className={styles.stateTitle} style={{ color: 'var(--color-danger)' }}>⚠️ Nenhuma escalação viável encontrada</h3>
+            <p className={styles.stateText}>
               Não há combinações de jogadores válidos suficientes para preencher estritamente as vagas táticas exigidas pelo esquema de linha.
               <strong> Por favor, cadastre, altere o cadastro ou ative mais defensores, meias ou atacantes para viabilizar as equipes.</strong>
             </p>
@@ -293,7 +249,7 @@ export function SimulationTab() {
         )}
 
         {results.length === 0 && !isSimulating && !hasSimulated && (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '40px' }}>
+          <div className={styles.placeholderState}>
             <p>Selecione a formação e clique em Gerar Times.</p>
           </div>
         )}

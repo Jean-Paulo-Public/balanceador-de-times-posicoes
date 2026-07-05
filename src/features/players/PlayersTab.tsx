@@ -2,30 +2,56 @@ import { useState, useRef, type ChangeEvent } from 'react';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { PlayerCard } from './PlayerCard';
 import { PlayerForm } from './PlayerForm';
-import { exportPlayersAsJson, parseImportedPlayers } from './importExport';
-import { UserPlus, Users } from 'lucide-react';
+import { exportPlayersAsJson, parseImportedPlayers, pickAndImportPlayersFile, supportsNativeFilePicker } from './importExport';
+import { UserPlus, Users, Sparkles, Save, FolderOpen } from 'lucide-react';
 import type { Player } from '../../domain/types';
+import styles from './PlayersTab.module.css';
 
 export function PlayersTab() {
-  const { players, setPlayers, generateTestPlayersOnEmpty, setGenerateTestPlayersOnEmpty } = usePlayerStore();
+  const { players, setPlayers, generateTestPlayersOnEmpty, setGenerateTestPlayersOnEmpty, generateTestRoster } = usePlayerStore();
   const [showForm, setShowForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | undefined>(undefined);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const canPickFolder = supportsNativeFilePicker();
 
-  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+  // Fallback para navegadores sem File System Access API (Firefox, Safari...):
+  // dispara o <input type="file"> escondido e lê o arquivo escolhido.
+  const handleFallbackImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
 
     try {
       const rawText = await file.text();
-      const importedPlayers = parseImportedPlayers(rawText);
-      setPlayers(importedPlayers);
+      setPlayers(parseImportedPlayers(rawText));
       setImportError(null);
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'Erro ao importar arquivo JSON.');
     }
+  };
+
+  const handleImportClick = async () => {
+    if (!canPickFolder) {
+      fileInputRef.current?.click();
+      return;
+    }
+    try {
+      const imported = await pickAndImportPlayersFile();
+      if (imported) {
+        setPlayers(imported);
+        setImportError(null);
+      }
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Erro ao importar arquivo JSON.');
+    }
+  };
+
+  const handleGenerateTestRoster = () => {
+    if (players.length > 0 && !window.confirm('Isso substitui todos os jogadores cadastrados pelo elenco de teste. Continuar?')) {
+      return;
+    }
+    generateTestRoster();
   };
 
   const handleEdit = (player: Player) => {
@@ -44,44 +70,45 @@ export function PlayersTab() {
     <div className="animate-fade-in">
       <div className="header-top">
         <h1>Balanceador</h1>
-        <p style={{ color: 'var(--text-muted)' }}>Gerencie os jogadores do racha</p>
+        <p>Gerencie os jogadores do racha</p>
+        <span className={styles.savedHint}>
+          <Save size={12} /> Salvo automaticamente no seu navegador
+        </span>
       </div>
 
       <div style={{ padding: '20px' }}>
         {!showForm ? (
           <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Users color="var(--primary)" />
-                <h2 style={{ margin: 0 }}>Jogadores</h2>
+            <div className={styles.headerRow}>
+              <div className={styles.headerTitle}>
+                <Users color="var(--color-primary)" size={22} />
+                <h2>Jogadores</h2>
               </div>
-              <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                {activeCount} de linha ativos
-              </span>
+              <span className="chip chip-primary">{activeCount} de linha ativos</span>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
-              <button
-                className="btn"
-                style={{ flex: 1, minWidth: '180px' }}
-                onClick={() => exportPlayersAsJson(players)}
-              >
-                Exportar jogadores (JSON)
+            <div className={styles.actionsRow}>
+              <button className="btn" onClick={() => exportPlayersAsJson(players)}>
+                Exportar (JSON)
               </button>
-              <button
-                className="btn btn-secondary"
-                style={{ flex: 1, minWidth: '180px' }}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Importar jogadores (JSON)
+              <button className="btn btn-secondary" onClick={handleImportClick}>
+                Importar (JSON)
+              </button>
+              <button className="btn btn-ghost" onClick={handleGenerateTestRoster} title="Preenche o elenco com craques reais só para testar o app">
+                <Sparkles size={16} /> Elenco de teste
               </button>
             </div>
+            {canPickFolder && (
+              <p className={styles.pickerHint}>
+                <FolderOpen size={13} /> Exportar/Importar abre o seletor de pastas do sistema — escolha sua pasta do Google Drive (ou OneDrive) sincronizada para salvar direto lá.
+              </p>
+            )}
             <input
               ref={fileInputRef}
               type="file"
               accept="application/json"
               style={{ display: 'none' }}
-              onChange={handleImportFile}
+              onChange={handleFallbackImportFile}
             />
             <label className="checkbox-group">
               <input
@@ -89,25 +116,18 @@ export function PlayersTab() {
                 checked={generateTestPlayersOnEmpty}
                 onChange={(e) => setGenerateTestPlayersOnEmpty(e.target.checked)}
               />
-              <span>Gerar lista de jogadores de teste quando tiver 0 jogadores cadastrados</span>
+              <span>Repor o elenco de teste automaticamente se a lista ficar vazia</span>
             </label>
-            {importError && (
-              <div style={{ color: 'var(--danger)', marginBottom: '16px' }}>
-                {importError}
-              </div>
-            )}
-            <button
-              className="btn"
-              style={{ width: '100%', marginBottom: '24px' }}
-              onClick={() => setShowForm(true)}
-            >
+            {importError && <div className={styles.errorBox}>{importError}</div>}
+
+            <button className={`btn ${styles.addButton}`} onClick={() => setShowForm(true)}>
               <UserPlus size={20} /> Adicionar Jogador
             </button>
 
             {players.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '40px' }}>
+              <div className={styles.emptyState}>
                 <p>Nenhum jogador cadastrado ainda.</p>
-                <p style={{ fontSize: '0.875rem', marginTop: '8px' }}>Comece adicionando a galera do racha!</p>
+                <p>Comece adicionando a galera do racha, ou clique em "Elenco de teste" para brincar com craques de verdade!</p>
               </div>
             ) : (
               <div>

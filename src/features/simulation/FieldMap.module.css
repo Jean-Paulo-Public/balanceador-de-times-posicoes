@@ -1,0 +1,100 @@
+.wrapper {
+  flex: 0 1 auto;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0 0 0;
+}
+
+.caption {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pitch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background:
+    repeating-linear-gradient(
+      0deg,
+      #1f7a34 0px,
+      #1f7a34 40px,
+      #1c6f2f 40px,
+      #1c6f2f 80px
+    );
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px 6px;
+}
+
+.pitchLines {
+  position: absolute;
+  inset: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.centerLine {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  border-top: 2px solid rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+}
+
+.centerCircle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  z-index: 1;
+}
+
+.playerChip {
+  background: rgba(5, 7, 10, 0.72);
+  color: white;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  white-space: nowrap;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gkChip {
+  border-color: rgba(56, 189, 248, 0.7);
+  color: #d3f3ff;
+}
+
+.emptySlot {
+  font-size: 0.66rem;
+  color: rgba(255, 255, 255, 0.4);
+}

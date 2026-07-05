@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Shield, Users, Swords } from 'lucide-react';
 import type { Player, PlayerStats, Position } from '../../domain/types';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { StarRating } from '../../components/StarRating';
@@ -9,11 +10,18 @@ import {
   ALL_ATTRIBUTE_KEYS,
   normalizeStats,
 } from '../../domain/playerAttributes';
+import styles from './PlayerForm.module.css';
 
 interface PlayerFormProps {
   onClose: () => void;
   editingPlayer?: Player;
 }
+
+const POSITION_OPTIONS: { value: Position; label: string; icon: ReactNode }[] = [
+  { value: 'DEFENSOR', label: 'Defensor', icon: <Shield size={16} /> },
+  { value: 'MEIA', label: 'Meia', icon: <Users size={16} /> },
+  { value: 'ATACANTE', label: 'Atacante', icon: <Swords size={16} /> },
+];
 
 const POSITION_HELP: Record<Position, string> = {
   DEFENSOR: 'Defensores são muito bons para marcar e proteger a área, mas não tão bons com finalização e drible. Podem improvisar como Meia.',
@@ -72,10 +80,8 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const { defensive, offensive } = ATTRS_BY_POSITION[position];
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ padding: '24px', marginTop: '16px', marginBottom: '32px' }}>
-      <h2 style={{ color: 'var(--primary)', marginBottom: '20px' }}>
-        {editingPlayer ? 'Editar Jogador' : 'Novo Jogador'}
-      </h2>
+    <div className={`glass-panel animate-fade-in ${styles.panel}`}>
+      <h2 className={styles.title}>{editingPlayer ? 'Editar Jogador' : 'Novo Jogador'}</h2>
 
       <form onSubmit={handleSubmit}>
         <div className="input-group">
@@ -90,7 +96,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
           />
         </div>
 
-        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '20px' }}>
+        <div className={styles.checkRow}>
           <label className="checkbox-group">
             <input type="checkbox" checked={isCaptain} onChange={e => setIsCaptain(e.target.checked)} />
             Capitão do Time?
@@ -103,81 +109,74 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
 
         <div className="input-group">
           <label>Posição Principal</label>
-          <select
-            className="input-field"
-            value={position}
-            onChange={(e) => setPosition(e.target.value as Position)}
-          >
-            <option value="DEFENSOR">Defensor</option>
-            <option value="MEIA">Meia</option>
-            <option value="ATACANTE">Atacante</option>
-          </select>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.4' }}>
-            {POSITION_HELP[position]}
-          </p>
+          <div className={styles.segmented}>
+            {POSITION_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`${styles.segmentBtn} ${position === opt.value ? styles[`segmentBtnActive${opt.value}`] : ''}`}
+                onClick={() => setPosition(opt.value)}
+              >
+                {opt.icon} {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className={styles.helpText}>{POSITION_HELP[position]}</p>
         </div>
 
-        <div style={{ borderTop: '1px solid var(--border-color)', margin: '20px 0', paddingTop: '20px' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Atributos do Jogador</h3>
+        <div className={styles.divider}>
+          <h3 className={styles.sectionTitle}>Atributos do Jogador</h3>
 
-          <div style={{ marginBottom: '20px' }}>
-            <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.3)' }}>
-              <p style={{ fontSize: '0.9rem', color: '#ffffff', margin: 0, lineHeight: '1.4' }}>
-                <strong>Observação:</strong> Reserve 6 estrelas para quando o jogador for praticamente perfeito naquilo.
-              </p>
+          <div className={styles.noticeBox}>
+            <strong style={{ color: 'var(--color-text)' }}>Observação:</strong> reserve 6 estrelas para quando o jogador for praticamente perfeito naquilo.
+          </div>
+
+          {allStatsAreDefault && (
+            <div className={styles.quickFillBox}>
+              Definir estrelas em todos os atributos
+              <p className={styles.quickFillHint}>para atribuição rápida, depois ajuste de acordo com cada atributo</p>
+              <StarRating label="" value={3} onChange={v => updateAllStats(v)} />
             </div>
-            {allStatsAreDefault && (
-              <div style={{ marginBottom: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(0, 123, 255, 0.08)', border: '1px solid rgba(0, 123, 255, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
-                Definir estrelas em todos os atributos
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4', fontWeight: 400 }}>
-                  para atribuição rápida, depois ajuste de acordo com cada atributo
-                </p>
-                <StarRating label="" value={3} onChange={v => updateAllStats(v)} />
+          )}
+
+          <div className={styles.recomposicaoBox}>
+            <StarRating
+              label={`${GERAL_ATTR.label} (peso alto na média geral e no equilíbrio defensivo)`}
+              value={stats.geral_recomposicaoDefensiva!}
+              onChange={v => updateStat('geral_recomposicaoDefensiva', v)}
+            />
+            <p className={styles.recomposicaoHint}>
+              Pense em jogadores mais velhos ou com pouco compromisso tático: mesmo sendo tecnicamente bons,
+              marcam pouco e recompõem devagar. Essa nota pesa mais do que as demais no equilíbrio entre os times.
+            </p>
+          </div>
+
+          <div style={{ marginTop: 'var(--space-4)' }}>
+            <div className={styles.attrCard}>
+              <div className={styles.attrCardHeader}>
+                <h4 className={styles.attrCardTitleDefensive}>Aspectos Defensivos</h4>
+                <span className="chip chip-info">Média: {getAvg(defensive.map(a => a.key))}</span>
               </div>
-            )}
-            <div style={{ padding: '12px', background: 'rgba(255,165,0,0.08)', borderRadius: '8px', border: '1px solid rgba(255,165,0,0.25)' }}>
-              <StarRating
-                label={`${GERAL_ATTR.label} (peso alto na média geral e no equilíbrio defensivo)`}
-                value={stats.geral_recomposicaoDefensiva!}
-                onChange={v => updateStat('geral_recomposicaoDefensiva', v)}
-              />
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0, lineHeight: '1.4' }}>
-                Pense em jogadores mais velhos ou com pouco compromisso tático: mesmo sendo tecnicamente bons,
-                marcam pouco e recompõem devagar. Essa nota pesa mais do que as demais no equilíbrio entre os times.
-              </p>
+              {defensive.map(attr => (
+                <StarRating key={attr.key} label={attr.label} value={stats[attr.key]!} onChange={v => updateStat(attr.key, v)} />
+              ))}
             </div>
-          </div>
 
-          <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h4 style={{ color: 'var(--primary)', margin: 0 }}>Aspectos Defensivos</h4>
-              <span style={{ fontSize: '0.8rem', background: 'var(--primary)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
-                Média: {getAvg(defensive.map(a => a.key))}
-              </span>
+            <div className={styles.attrCard}>
+              <div className={styles.attrCardHeader}>
+                <h4 className={styles.attrCardTitleOffensive}>Aspectos Ofensivos</h4>
+                <span className="chip chip-accent">Média: {getAvg(offensive.map(a => a.key))}</span>
+              </div>
+              {offensive.map(attr => (
+                <StarRating key={attr.key} label={attr.label} value={stats[attr.key]!} onChange={v => updateStat(attr.key, v)} />
+              ))}
             </div>
-            {defensive.map(attr => (
-              <StarRating key={attr.key} label={attr.label} value={stats[attr.key]!} onChange={v => updateStat(attr.key, v)} />
-            ))}
-          </div>
-
-          <div style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h4 style={{ color: 'var(--secondary)', margin: 0 }}>Aspectos Ofensivos</h4>
-              <span style={{ fontSize: '0.8rem', background: 'var(--secondary)', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold', color: 'black' }}>
-                Média: {getAvg(offensive.map(a => a.key))}
-              </span>
-            </div>
-            {offensive.map(attr => (
-              <StarRating key={attr.key} label={attr.label} value={stats[attr.key]!} onChange={v => updateStat(attr.key, v)} />
-            ))}
           </div>
 
           {isGoalkeeper && (
-            <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(0,100,200,0.2)', borderRadius: '8px', border: '1px solid rgba(0,150,255,0.3)' }}>
-              <h4 style={{ color: '#00A8FF', marginBottom: '8px' }}>⚽ Atributos de Goleiro</h4>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.4' }}>
-                Avalie os atributos específicos de goleiro (usados quando ele entrar no gol).
-              </p>
+            <div className={styles.gkBox}>
+              <h4 className={styles.gkTitle}>⚽ Atributos de Goleiro</h4>
+              <p className={styles.gkHint}>Avalie os atributos específicos de goleiro (usados quando ele entrar no gol).</p>
               {GOALKEEPER_ATTRS.map(attr => (
                 <StarRating key={attr.key} label={attr.label} value={stats[attr.key]!} onChange={v => updateStat(attr.key, v)} />
               ))}
@@ -185,7 +184,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', marginTop: '30px' }}>
+        <div className={styles.formActions}>
           <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn" style={{ flex: 2 }}>{editingPlayer ? 'Salvar Alterações' : 'Cadastrar Jogador'}</button>
         </div>

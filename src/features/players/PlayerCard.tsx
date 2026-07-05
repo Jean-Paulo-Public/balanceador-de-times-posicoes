@@ -4,16 +4,17 @@ import { usePlayerStore } from '../../store/usePlayerStore';
 import { posToLabel } from '../../domain/playerAttributes';
 import { scoreNativePosition, scoreMeiaRole, scoreDefensorRole, scoreAtacanteRole } from '../../engine/scoring';
 import { Shield, Users, Swords, Edit, Trash2, ShieldAlert } from 'lucide-react';
+import styles from './PlayerCard.module.css';
 
 interface PlayerCardProps {
   player: Player;
   onEdit: (player: Player) => void;
 }
 
-const POSITION_VISUAL: Record<Player['position'], { icon: ReactNode; color: string }> = {
-  DEFENSOR: { icon: <Shield size={16} />, color: 'var(--primary)' },
-  MEIA: { icon: <Users size={16} />, color: 'var(--secondary)' },
-  ATACANTE: { icon: <Swords size={16} />, color: 'var(--danger)' },
+const POSITION_VISUAL: Record<Player['position'], { icon: ReactNode; color: string; chip: string }> = {
+  DEFENSOR: { icon: <Shield size={15} />, color: 'var(--color-primary)', chip: 'chip-primary' },
+  MEIA: { icon: <Users size={15} />, color: 'var(--color-info)', chip: 'chip-info' },
+  ATACANTE: { icon: <Swords size={15} />, color: 'var(--color-accent)', chip: 'chip-accent' },
 };
 
 const toOverall = (val: number) => Math.round((val / 6) * 100);
@@ -23,63 +24,63 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
   const visual = POSITION_VISUAL[player.position];
 
   const mainOverall = toOverall(scoreNativePosition(player));
-  const secondaryLabel = player.position === 'MEIA' ? 'OVR Versatilidade' : 'OVR Improviso (Meia)';
+  const secondaryLabel = player.position === 'MEIA' ? 'Versatilidade' : 'Improviso (Meia)';
   const secondaryOverall = player.position === 'MEIA'
     ? toOverall((scoreDefensorRole(player) + scoreAtacanteRole(player)) / 2)
     : toOverall(scoreMeiaRole(player));
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ marginBottom: '16px', position: 'relative', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: '4px', backgroundColor: visual.color }}></div>
+    <div className={`${styles.card} animate-fade-in`}>
+      <div className={styles.accentBar} style={{ background: visual.color }} />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <h3 style={{ margin: 0, fontSize: '1.2rem', textDecoration: !player.active ? 'line-through' : 'none', opacity: !player.active ? 0.5 : 1 }}>
-              {player.name}
-            </h3>
-            {player.isCaptain && <span title="Capitão" style={{ fontSize: '1.2rem' }}>👑</span>}
-            {player.isGoalkeeper && <span title="Goleiro (Emergência)"><ShieldAlert size={18} color="var(--primary)" /></span>}
-          </div>
+      <div className={`${styles.main} ${!player.active ? styles.inactive : ''}`}>
+        <div className={styles.nameRow}>
+          <span className={`${styles.name} ${!player.active ? styles.nameStrike : ''}`}>{player.name}</span>
+          {player.isCaptain && <span title="Capitão">👑</span>}
+          {player.isGoalkeeper && <span title="Goleiro (Emergência)"><ShieldAlert size={16} color="var(--color-info)" /></span>}
+        </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: visual.color, fontSize: '0.85rem', fontWeight: 600 }}>
-            {visual.icon} {posToLabel(player.position)}
-          </div>
+        <div className={styles.metaRow}>
+          <span className={`chip ${visual.chip}`}>{visual.icon} {posToLabel(player.position)}</span>
+        </div>
 
-          <div style={{ marginTop: '8px', display: 'flex', gap: '12px', opacity: !player.active ? 0.5 : 1 }}>
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 8px', borderRadius: '6px' }}>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>OVR Principal</div>
-              <div style={{ fontWeight: 'bold', color: mainOverall >= 80 ? 'var(--secondary)' : mainOverall >= 60 ? 'var(--star-active)' : 'white' }}>
-                {mainOverall}
-              </div>
+        <div className={styles.overalls}>
+          <div className={styles.overallBox}>
+            <div className={styles.overallLabel}>OVR Principal</div>
+            <div className={styles.overallValue} style={{ color: mainOverall >= 80 ? 'var(--color-primary)' : mainOverall >= 60 ? 'var(--color-accent)' : 'var(--color-text)' }}>
+              {mainOverall}
             </div>
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 8px', borderRadius: '6px' }}>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{secondaryLabel}</div>
-              <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {secondaryOverall}
-              </div>
+          </div>
+          <div className={styles.overallBox}>
+            <div className={styles.overallLabel}>{secondaryLabel}</div>
+            <div className={styles.overallValue} style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+              {secondaryOverall}
             </div>
           </div>
         </div>
+      </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', alignSelf: 'center' }}>
-          <label className="checkbox-group" style={{ margin: 0 }}>
-            <input
-              type="checkbox"
-              checked={player.active}
-              onChange={() => togglePlayerActive(player.id)}
-              title="Ativo/Inativo"
-            />
-          </label>
-          <button className="btn-secondary" style={{ padding: '6px', borderRadius: '8px', border: 'none' }} onClick={() => onEdit(player)}>
-            <Edit size={18} />
-          </button>
-          <button className="btn-secondary" style={{ padding: '6px', borderRadius: '8px', border: 'none', color: 'var(--danger)' }} onClick={() => {
+      <div className={styles.actions}>
+        <label className={styles.toggle} title="Ativo/Inativo">
+          <input
+            type="checkbox"
+            checked={player.active}
+            onChange={() => togglePlayerActive(player.id)}
+          />
+          <span className={styles.toggleTrack} />
+          <span className={styles.toggleThumb} />
+        </label>
+        <button className={styles.iconBtn} onClick={() => onEdit(player)}>
+          <Edit size={17} />
+        </button>
+        <button
+          className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+          onClick={() => {
             if (window.confirm('Excluir jogador?')) deletePlayer(player.id);
-          }}>
-            <Trash2 size={18} />
-          </button>
-        </div>
+          }}
+        >
+          <Trash2 size={17} />
+        </button>
       </div>
     </div>
   );

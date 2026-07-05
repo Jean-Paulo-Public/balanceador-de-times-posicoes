@@ -1,29 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Player, Position } from '../domain/types';
-import { createStats, normalizeStats } from '../domain/playerAttributes';
+import type { Player } from '../domain/types';
+import { normalizeStats } from '../domain/playerAttributes';
 import { migratePlayers } from './migration';
-
-const getRandomStar = () => Math.floor(Math.random() * 3) + 2;
-
-const createPlayer = (name: string, position: Position, isGoalkeeper = false): Player => ({
-  id: crypto.randomUUID(),
-  name,
-  active: true,
-  isCaptain: false,
-  isGoalkeeper,
-  position,
-  stats: createStats(getRandomStar()),
-});
-
-const getDefaultPlayers = (): Player[] => {
-  const players: Player[] = [];
-  for (let i = 1; i <= 3; i++) players.push(createPlayer(`Goleiro ${i}`, 'DEFENSOR', true));
-  for (let i = 1; i <= 5; i++) players.push(createPlayer(`Defensor ${i}`, 'DEFENSOR'));
-  for (let i = 1; i <= 8; i++) players.push(createPlayer(`Meia ${i}`, 'MEIA'));
-  for (let i = 1; i <= 5; i++) players.push(createPlayer(`Atacante ${i}`, 'ATACANTE'));
-  return players;
-};
+import { buildFunRoster } from './funRoster';
 
 interface PlayerState {
   players: Player[];
@@ -38,6 +18,7 @@ interface PlayerState {
   setGenerateTestPlayersOnEmpty: (value: boolean) => void;
   setMaxSixLinePlayers: (value: boolean) => void;
   setPlayers: (players: Player[]) => void;
+  generateTestRoster: () => void;
 }
 
 const CURRENT_STORAGE_VERSION = 2;
@@ -45,7 +26,8 @@ const CURRENT_STORAGE_VERSION = 2;
 export const usePlayerStore = create<PlayerState>()(
   persist(
     (set) => ({
-      players: getDefaultPlayers(),
+      // Por padrão a lista vem vazia — nada de jogador fake sem o usuário pedir.
+      players: [],
       neverScaleGoalkeepers: false,
       generateTestPlayersOnEmpty: false,
       maxSixLinePlayers: false,
@@ -73,6 +55,7 @@ export const usePlayerStore = create<PlayerState>()(
       setGenerateTestPlayersOnEmpty: (value) => set(() => ({ generateTestPlayersOnEmpty: value })),
       setMaxSixLinePlayers: (value) => set(() => ({ maxSixLinePlayers: value })),
       setPlayers: (players) => set(() => ({ players: players.map(p => ({ ...p, stats: normalizeStats(p.stats) })) })),
+      generateTestRoster: () => set(() => ({ players: buildFunRoster() })),
     }),
     {
       name: 'balanceador-times-storage',
@@ -87,10 +70,10 @@ export const usePlayerStore = create<PlayerState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         if (!state.players?.length && state.generateTestPlayersOnEmpty) {
-          state.players = getDefaultPlayers();
+          state.players = buildFunRoster();
           return;
         }
-        state.players = state.players.map((p) => ({ ...p, stats: normalizeStats(p.stats) }));
+        state.players = (state.players ?? []).map((p) => ({ ...p, stats: normalizeStats(p.stats) }));
       },
     }
   )
