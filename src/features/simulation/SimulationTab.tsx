@@ -1,58 +1,42 @@
-import { useState, useEffect } from 'react';
-import { usePlayerStore } from '../store/usePlayerStore';
-import type { FormationType, SimulationResult } from '../types';
-import { generateTeams } from '../utils/balancer';
+import { useState } from 'react';
+import { usePlayerStore } from '../../store/usePlayerStore';
+import type { FormationType, SimulationResult } from '../../domain/types';
+import { FORMATION_LABELS } from '../../domain/formations';
+import { generateTeams } from '../../engine/generateTeams';
+import { FieldMap } from './FieldMap';
 import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert } from 'lucide-react';
 
+const MAX_TEAMS = 4;
+const suggestTeams = (activePlayersCount: number) => (activePlayersCount <= 17 ? 2 : 3);
+
+const overallColor = (value: number) =>
+  value > 75 ? 'var(--secondary)' : value > 50 ? 'var(--star-active)' : 'var(--danger)';
+
 export function SimulationTab() {
-  const { players, neverScaleGoalkeepers, setNeverScaleGoalkeepers } = usePlayerStore();
-  const [teamFormations, setTeamFormations] = useState<FormationType[]>(Array(2).fill('QUALQUER'));
-  const [numTeams, setNumTeams] = useState<number>(2);
+  const { players, neverScaleGoalkeepers, setNeverScaleGoalkeepers, maxSixLinePlayers, setMaxSixLinePlayers } = usePlayerStore();
+
+  const activePlayersCount = players.filter(p => p.active).length;
+
+  // `desiredNumTeams` guarda a escolha do usuário. `numTeams` é sempre derivado dela,
+  // limitado ao que o elenco atual comporta — nunca sobrescreve a escolha manual do
+  // usuário "de verdade": se o elenco voltar a crescer, a escolha original volta a valer.
+  const [desiredNumTeams, setDesiredNumTeams] = useState<number>(() => suggestTeams(activePlayersCount));
+  const [teamFormations, setTeamFormations] = useState<FormationType[]>(() => Array(MAX_TEAMS).fill('QUALQUER'));
   const [results, setResults] = useState<SimulationResult[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasSimulated, setHasSimulated] = useState(false);
 
-  // --- NOVA PERSISTÊNCIA LOCAL PARA O LIMITE DE LINHA ---
-  const [maxSixLinePlayers, setMaxSixLinePlayers] = useState<boolean>(() => {
-    const saved = localStorage.getItem('max_six_line_players');
-    return saved ? JSON.parse(saved) : false;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('max_six_line_players', JSON.stringify(maxSixLinePlayers));
-  }, [maxSixLinePlayers]);
-  // -----------------------------------------------------
-
-  // --- NOVA LOGICA DE CONTAGEM E VALIDAÇÃO FLEXÍVEL ---
-  const activePlayers = players.filter(p => p.active);
-  const activePlayersCount = activePlayers.length;
-
-  // O mínimo absoluto necessário são 6 jogadores de linha por time solicitado
+  const maxFeasibleTeams = Math.max(1, Math.floor(activePlayersCount / 6));
+  const numTeams = Math.min(desiredNumTeams, maxFeasibleTeams);
   const requiredPlayers = numTeams * 6;
-  
-  // Sugestão de quantidade de times baseada no tamanho do elenco de linha ativo
-  const suggestedTeams = activePlayersCount <= 17 ? 2 : 3;
-  // -----------------------------------------------------
-
-  useEffect(() => {
-    const s = suggestedTeams;
-    if (numTeams !== s) {
-      setNumTeams(s);
-      setTeamFormations(prev => {
-        const next = prev.slice(0, s);
-        while (next.length < s) next.push('QUALQUER');
-        return next;
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePlayersCount]);
+  const activeFormations = teamFormations.slice(0, numTeams);
 
   const handleSimulate = () => {
     setIsSimulating(true);
     setHasSimulated(true);
     setTimeout(() => {
-      const simResults = generateTeams(players, teamFormations, numTeams, 3000, neverScaleGoalkeepers, maxSixLinePlayers);
+      const simResults = generateTeams(players, activeFormations, numTeams, 3000, neverScaleGoalkeepers, maxSixLinePlayers);
       setResults(simResults);
       setCurrentIndex(0);
       setIsSimulating(false);
@@ -60,70 +44,20 @@ export function SimulationTab() {
   };
 
   const currentSimulation = results[currentIndex];
-  
-  // Validação dinâmica do limite de equilíbrio técnico
-  const isImbalanced = currentSimulation && (currentSimulation.equilibrium ?? 0) > 100;
-
-  const renderFieldMap = (playersList: NonNullable<typeof currentSimulation>['teams'][number]['players']) => {
-    // Layout base das linhas de jogo
-    const layout = [
-      { area: 'DEF', label: 'Defesa', roles: ['DEF'], isGK: false },
-      { area: 'MD', label: 'Volante', roles: ['MD'], isGK: false },
-      { area: 'MEI', label: 'Meia', roles: ['MEI'], isGK: false },
-      { area: 'MA', label: 'Meia Ataque', roles: ['MA'], isGK: false },
-      { area: 'ATA', label: 'Ataque', roles: ['ATA'], isGK: false },
-    ];
-
-    // MUDANÇA AQUI: Verifica se existe alguém atuando especificamente na posição de GK neste time
-    const hasGoalkeeper = playersList.some(p => p.roleShort === 'GK');
-
-    // Se houver goleiro escalado, adiciona a seção no topo do campinho
-    if (hasGoalkeeper) {
-      layout.unshift({ area: 'GK', label: 'Goleiro', roles: [], isGK: true });
-    }
-
-    return (
-      <div style={{ flex: '0 1 auto', width: 'max-content', display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center', alignItems: 'center', margin: '4px 0 0 0', padding: '0 4px' }}>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>Posicionamento tático</span>
-        
-        <div style={{ background: 'linear-gradient(180deg, rgba(0,100,0,0.12), rgba(0,130,0,0.22))', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '10px', display: 'grid', gap: '6px' }}>
-          {layout.map(section => {
-            // MUDANÇA AQUI: Filtramos estritamente pelo roleShort dinâmico vindo do motor
-            const playersInSection = section.isGK 
-              ? playersList.filter(p => p.roleShort === 'GK')
-              : playersList.filter(p => section.roles.includes(p.roleShort || ''));
-
-            // Se a seção for de "Meia Ataque" (MA) e não houver jogadores nela (como no sistema de Contenção), nós a ocultamos do mapa
-            if (section.area === 'MA' && playersInSection.length === 0) {
-              return null;
-            }
-
-            return (
-              <div key={section.area} style={{ display: 'flex', flexDirection: 'column', gap: '1px', padding: '4px 8px', background: section.isGK ? 'rgba(0, 150, 255, 0.1)' : 'rgba(255,255,255,0.05)', borderRadius: '8px', minHeight: '32px', alignItems: 'center', textAlign: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: '0.62rem', fontWeight: 700, color: section.isGK ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{section.label}</span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
-                  {playersInSection.length > 0 ? playersInSection.map(p => p.player.name).join(', ') : '—'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+  const isImbalanced = currentSimulation && (currentSimulation.equilibrium > 100 || currentSimulation.defensiveEquilibrium > 100);
 
   return (
     <div className="animate-fade-in">
       <div className="header-top">
         <h1>Simular Partidas</h1>
-        <p style={{ color: 'var(--text-muted)' }}>Gere as equipes mais equilibradas</p>
+        <p style={{ color: 'var(--text-muted)' }}>Gere as equipes mais equilibradas, com foco na defesa</p>
       </div>
 
       <div style={{ padding: '20px' }}>
         <div className="glass-panel" style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1, minWidth: '200px' }}>
-              {teamFormations.map((teamFormation, index) => (
+              {activeFormations.map((teamFormation, index) => (
                 <div key={index} className="input-group" style={{ minWidth: '180px' }}>
                   <label>Formação Time {index + 1}</label>
                   <select
@@ -136,34 +70,30 @@ export function SimulationTab() {
                     })}
                   >
                     <option value="QUALQUER">Qualquer uma</option>
-                    <option value="EQUILIBRADA">Equilibrada</option>
-                    <option value="OFENSIVA">Ofensiva</option>
-                    <option value="DEFENSIVA">Defensiva</option>
-                    <option value="CONTENCAO">Contenção</option>
+                    <option value="OFENSIVA">{FORMATION_LABELS.OFENSIVA}</option>
+                    <option value="EQUILIBRADA">{FORMATION_LABELS.EQUILIBRADA}</option>
+                    <option value="DEFENSIVA">{FORMATION_LABELS.DEFENSIVA}</option>
                   </select>
                 </div>
               ))}
             </div>
-            
+
             <div className="input-group" style={{ marginBottom: 0, width: '120px' }}>
               <label>Qtd. de Times</label>
-              <select 
+              <select
                 className="input-field"
-                value={numTeams}
-                onChange={(e) => {
-                  const nextNum = Number(e.target.value);
-                  setNumTeams(nextNum);
-                  setTeamFormations(prev => {
-                    const next = prev.slice(0, nextNum);
-                    while (next.length < nextNum) next.push('QUALQUER');
-                    return next;
-                  });
-                }}
+                value={desiredNumTeams}
+                onChange={(e) => setDesiredNumTeams(Number(e.target.value))}
               >
                 <option value={2}>2 Times</option>
                 <option value={3}>3 Times</option>
                 <option value={4}>4 Times</option>
               </select>
+              {desiredNumTeams > maxFeasibleTeams && (
+                <p style={{ fontSize: '0.72rem', color: 'var(--danger)', marginTop: '4px' }}>
+                  Usando {numTeams} por falta de jogadores.
+                </p>
+              )}
             </div>
 
             <div className="input-group" style={{ marginBottom: 0, minWidth: '240px' }}>
@@ -189,13 +119,13 @@ export function SimulationTab() {
               </div>
             </div>
           </div>
-          
+
           <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               {activePlayersCount} / {requiredPlayers} jogadores ativos (Mínimo de linha atingido)
             </span>
-            <button 
-              className="btn" 
+            <button
+              className="btn"
               onClick={handleSimulate}
               disabled={activePlayersCount < requiredPlayers || isSimulating}
             >
@@ -211,19 +141,13 @@ export function SimulationTab() {
 
         {results.length > 0 && currentSimulation && isImbalanced && (
           <div style={{
-            marginBottom: '20px',
-            padding: '16px',
-            background: 'rgba(255, 165, 0, 0.1)',
-            border: '1px solid var(--star-active)',
-            borderRadius: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            color: 'var(--star-active)'
+            marginBottom: '20px', padding: '16px', background: 'rgba(255, 165, 0, 0.1)',
+            border: '1px solid var(--star-active)', borderRadius: '12px', display: 'flex',
+            alignItems: 'center', gap: '12px', color: 'var(--star-active)'
           }}>
             <AlertTriangle size={22} style={{ flexShrink: 0 }} />
             <span style={{ fontSize: '0.92rem', lineHeight: '1.4' }}>
-              <strong>Aviso de Equilíbrio:</strong> Os jogadores cadastrados atualmente não são os ideais para a montagem de um time equilibrado neste cenário. Recomendamos cadastrar mais goleiros ou meias para refinar os potes técnicos.
+              <strong>Aviso de Equilíbrio:</strong> Os jogadores cadastrados atualmente não são os ideais para a montagem de um time equilibrado (ou defensivamente equilibrado) neste cenário. Recomendamos cadastrar mais goleiros, defensores ou meias para refinar os potes técnicos.
             </span>
           </div>
         )}
@@ -231,22 +155,22 @@ export function SimulationTab() {
         {results.length > 0 && currentSimulation && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <button 
-                className="btn-secondary" 
+              <button
+                className="btn-secondary"
                 style={{ padding: '8px', borderRadius: '50%' }}
                 onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
                 disabled={currentIndex === 0}
               >
                 <ChevronLeft size={24} />
               </button>
-              
+
               <div style={{ textAlign: 'center' }}>
                 <h3 style={{ margin: 0, color: 'var(--primary)' }}>Cenário {currentIndex + 1}</h3>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>de {results.length} simulações</span>
               </div>
-              
-              <button 
-                className="btn-secondary" 
+
+              <button
+                className="btn-secondary"
                 style={{ padding: '8px', borderRadius: '50%' }}
                 onClick={() => setCurrentIndex(prev => Math.min(results.length - 1, prev + 1))}
                 disabled={currentIndex === results.length - 1}
@@ -261,19 +185,26 @@ export function SimulationTab() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
                     <div>
                       <h3 style={{ margin: 0 }}>{team.name}</h3>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sistema: {team.tacticalSystem}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Sistema: {FORMATION_LABELS[team.tacticalSystem as keyof typeof FORMATION_LABELS] ?? team.tacticalSystem}
+                      </span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Overall</span>
-                      <div style={{ 
-                        background: `linear-gradient(135deg, ${team.overall > 75 ? 'var(--secondary)' : team.overall > 50 ? 'var(--star-active)' : 'var(--danger)'}, transparent)`,
-                        padding: '4px 12px', borderRadius: '16px', fontWeight: 'bold'
-                      }}>
-                        {team.overall}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Overall</div>
+                        <div style={{ background: `linear-gradient(135deg, ${overallColor(team.overall)}, transparent)`, padding: '4px 12px', borderRadius: '16px', fontWeight: 'bold' }}>
+                          {team.overall}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title="Quão difícil é fazer gol nesse time">Defesa</div>
+                        <div style={{ background: `linear-gradient(135deg, ${overallColor(team.defensiveOverall)}, transparent)`, padding: '4px 12px', borderRadius: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <ShieldAlert size={14} /> {team.defensiveOverall}
+                        </div>
                       </div>
                     </div>
                   </div>
-                  
+
                   <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'space-between', gap: '16px' }}>
                     <div style={{ flex: '0 1 auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {team.players.map((tp, idx) => (
@@ -286,16 +217,14 @@ export function SimulationTab() {
                                   <AlertTriangle size={13} color="var(--star-active)" />
                                 </span>
                               )}
-                              {(tp as any).player.isCaptain || (tp as any).isCrownFallback && <span title="Capitão" style={{ fontSize: '0.85rem' }}>👑</span>}
-                              
-                              {/* MUDANÇA AQUI: Ícone de escudo/goleiro só se ele REALMENTE estiver jogando como GK neste time */}
+                              {tp.player.isCaptain && <span title="Capitão" style={{ fontSize: '0.85rem' }}>👑</span>}
                               {tp.roleShort === 'GK' && (
                                 <span title="Goleiro">
                                   <ShieldAlert size={13} color="var(--primary)" />
                                 </span>
                               )}
                             </div>
-                            
+
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                                 OVR: {Math.round((tp.roleScore / 6) * 100)}
@@ -313,10 +242,10 @@ export function SimulationTab() {
                       ))}
                     </div>
 
-                    {renderFieldMap(team.players)}
+                    <FieldMap playersList={team.players} />
                   </div>
 
-                  {team.bench && team.bench.length > 0 && (
+                  {team.bench.length > 0 && (
                     <div style={{ marginTop: '14px', padding: '10px 0 0 0', borderTop: '1px solid var(--border-color)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                         <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
@@ -325,13 +254,10 @@ export function SimulationTab() {
                         {team.benchOverall !== undefined && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Média do Banco:</span>
-                            <span style={{ 
-                              fontSize: '0.75rem', 
-                              fontWeight: 'bold',
-                              background: `linear-gradient(135deg, ${team.benchOverall > 75 ? 'var(--secondary)' : team.benchOverall > 50 ? 'var(--star-active)' : 'var(--danger)'}, transparent)`,
-                              padding: '2px 8px',
-                              borderRadius: '10px',
-                              color: 'var(--text)'
+                            <span style={{
+                              fontSize: '0.75rem', fontWeight: 'bold',
+                              background: `linear-gradient(135deg, ${overallColor(team.benchOverall)}, transparent)`,
+                              padding: '2px 8px', borderRadius: '10px', color: 'var(--text)'
                             }}>
                               {team.benchOverall}
                             </span>
@@ -352,7 +278,7 @@ export function SimulationTab() {
             </div>
           </div>
         )}
-        
+
         {results.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
           <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', borderColor: 'var(--danger)', marginTop: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', color: 'var(--danger)' }}>
@@ -360,8 +286,8 @@ export function SimulationTab() {
             </div>
             <h3 style={{ color: 'var(--danger)', marginBottom: '12px', marginTop: 0 }}>⚠️ Nenhuma escalação viável encontrada</h3>
             <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', maxWidth: '520px', margin: '0 auto', fontSize: '0.92rem' }}>
-              Não há combinações de jogadores válidos suficientes para preencher estritamente as vagas táticas exigidas pelo esquema de linha. 
-              <strong> Por favor, cadastre, altere o cadastro ou ative mais meias ( principalmente volantes ), defensores ou goleiros para viabilizar as equipes.</strong>
+              Não há combinações de jogadores válidos suficientes para preencher estritamente as vagas táticas exigidas pelo esquema de linha.
+              <strong> Por favor, cadastre, altere o cadastro ou ative mais defensores, meias ou atacantes para viabilizar as equipes.</strong>
             </p>
           </div>
         )}

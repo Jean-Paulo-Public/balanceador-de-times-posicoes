@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { PlayersTab } from './components/PlayersTab';
-import { SimulationTab } from './components/SimulationTab';
+import { PlayersTab } from './features/players/PlayersTab';
+import { SimulationTab } from './features/simulation/SimulationTab';
 import { Users, Trophy } from 'lucide-react';
 
 function App() {
@@ -12,14 +12,14 @@ function App() {
 
       <nav className="bottom-nav">
         <div className="bottom-nav-inner">
-          <div 
+          <div
             className={`nav-item ${activeTab === 'players' ? 'active' : ''}`}
             onClick={() => setActiveTab('players')}
           >
             <Users size={24} />
             <span>Jogadores</span>
           </div>
-          <div 
+          <div
             className={`nav-item ${activeTab === 'simulation' ? 'active' : ''}`}
             onClick={() => setActiveTab('simulation')}
           >

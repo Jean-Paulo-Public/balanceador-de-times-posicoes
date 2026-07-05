@@ -9,7 +9,9 @@
     "predeploy": "npm run build",
     "deploy": "node -e \"const fs = require('fs'); const p = 'node_modules/.cache/gh-pages'; if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });\" && gh-pages -d dist",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "lucide-react": "^1.17.0",
@@ -31,6 +33,6 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vitest": "^4.1.9"
   }
 }

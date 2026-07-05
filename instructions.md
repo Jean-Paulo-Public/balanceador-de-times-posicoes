@@ -1,32 +1,51 @@
 
-
 ## 📂 Estrutura de Arquivos
 
 ```text
 src/
-├── assets/          # Imagens e recursos estáticos
-├── components/      # Componentes reutilizáveis da interface
-│   ├── PlayerCard.tsx    # Card de exibição do jogador
-│   ├── PlayerForm.tsx    # Formulário de cadastro/edição
-│   ├── PlayersTab.tsx    # Aba de listagem de jogadores
-│   ├── SimulationTab.tsx # Aba de geração de times
-│   └── StarRating.tsx    # Componente de avaliação por estrelas
-├── store/           # Estado global (Zustand)
-│   └── usePlayerStore.ts # Gerenciamento de jogadores e times
-├── types/           # Definições de interfaces e tipos TypeScript
-│   └── index.ts
-├── utils/           # Lógica de negócio e algoritmos
-│   ├── balancer.ts       # Algoritmo de balanceamento de equipes
-│   └── balancer/    # Módulo do Motor de Equilíbrio
-│       ├── formations.ts # Definições de sistemas táticos
-│       ├── helpers.ts    # Utilitários de lógica
-│       └── scoring.ts    # Fórmulas de desempenho
-├── App.tsx          # Componente principal e layout
-└── main.tsx         # Ponto de entrada da aplicação
+├── domain/          # Modelo de dados: types.ts, playerAttributes.ts (labels/defaults), formations.ts (3 sistemas)
+├── engine/          # Motor de balanceamento: scoring.ts, improvisation.ts, generateTeams.ts (+ testes)
+├── store/           # Zustand: usePlayerStore.ts, migration.ts (migra dados antigos)
+├── features/
+│   ├── players/         # PlayerForm.tsx, PlayerCard.tsx, PlayersTab.tsx, importExport.ts
+│   └── simulation/      # SimulationTab.tsx, FieldMap.tsx
+├── components/       # UI genérica (StarRating.tsx)
+├── App.tsx / main.tsx
 ```
 
-Agente de IA, as alterações referentes a lógica de balanceamento e formação das equipes ficam no utils/balancer.ts, com impactos visuais no SimulationTab.tsx. As propriedades dos jogadores geralmente ficam em 
-components/PlayerForm.tsx, os types ficam em types/index.ts, sempre que colocar um atributo novo os types devem ser atualizados.
+## Instruções para o agente de IA
+
+Agente de IA, as alterações referentes à lógica de balanceamento e formação das equipes ficam em
+`src/engine/` (principalmente `generateTeams.ts` e `scoring.ts`) e em `src/domain/formations.ts`
+(vagas de cada sistema tático), com impacto visual em `src/features/simulation/SimulationTab.tsx`
+e `FieldMap.tsx`.
+
+As propriedades e atributos de jogador ficam centralizados em `src/domain/playerAttributes.ts`
+(metadados/labels) e `src/domain/types.ts` (o tipo `PlayerStats`). Sempre que adicionar um atributo
+novo, atualize os dois arquivos — e adicione o atributo em `ALL_ATTRIBUTE_KEYS` para que o
+cadastro rápido e a normalização de stats continuem funcionando. O formulário em
+`src/features/players/PlayerForm.tsx` lê esses metadados automaticamente, então normalmente não
+precisa ser editado ao adicionar um atributo.
+
+Modelo atual: 3 posições (`DEFENSOR`, `MEIA`, `ATACANTE`). Defensor e Atacante só improvisam como
+Meia; o Meia improvisa em qualquer posição. Essa regra vive em `src/engine/improvisation.ts`
+(`isImprovisationAllowed`) — qualquer mudança nela deve ser espelhada em `scoring.ts` (as funções
+`scoreDefensorRole`/`scoreMeiaRole`/`scoreAtacanteRole` precisam ter um branch para cada posição
+que a matriz de improviso permite, senão o jogador cai numa nota neutra fixa).
+
+O equilíbrio da defesa entre os times (para nenhum time ficar "goleável") é calculado por
+`defensiveContribution()` em `scoring.ts` e agregado por time em `generateTeams.ts`
+(`defensiveOverall`). Esse é o critério de ordenação PRIMÁRIO dos cenários simulados — só usa o
+equilíbrio geral como critério secundário/desempate. Ao alterar pesos ou critérios de ordenação,
+rode `npm run test` (Vitest) para garantir que os cenários difíceis em
+`src/engine/generateTeams.test.ts` continuam passando, e ajuste os limites do teste com dados
+reais se o comportamento mudar de propósito.
+
+Sempre que adicionar um cenário de teste novo, use os geradores de elenco em
+`src/engine/testFixtures.ts` como base.
+
+Caso um arquivo tenha mais de 1000 linhas, verifique se há como separar em arquivos menores em uma
+pasta com imports.
 
 ## 🚀 Deploy
 
@@ -36,7 +55,4 @@ O projeto está configurado para deploy automático no GitHub Pages:
 npm run deploy
 ```
 
-## Instruções para o agente de IA
 Agente de IA, sempre pergunte antes de fazer o deploy, não faça por conta própria.
-
-Caso um arquivo tenha mais de 1000 linhas verifique se tem como separar em arquivos menores em uma pasta com imports.

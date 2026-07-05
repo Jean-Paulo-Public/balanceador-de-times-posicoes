@@ -1,47 +1,48 @@
 # ⚽ Balanceador de Times
 
-Uma aplicação web moderna para organizar partidas esportivas, permitindo cadastrar jogadores com diferentes níveis de habilidade e posições, e gerar times equilibrados automaticamente.
+Uma aplicação web moderna para organizar partidas esportivas, permitindo cadastrar jogadores com diferentes níveis de habilidade e posições, e gerar times equilibrados automaticamente — com foco especial em manter a defesa dos times equilibrada entre si.
 
 ## 🚀 Funcionalidades
 
-- **Cadastro de Jogadores**: Adicione jogadores com nome, nível de habilidade (1 a 5 estrelas) e posição.
-- **Gerenciamento de Lista**: Edite ou remova jogadores facilmente.
-- **Algoritmo de Equilíbrio**: Gera times balanceados levando em conta a média de nível técnico.
-- **Interface Responsiva**: Design moderno e adaptável para dispositivos móveis e desktop.
-- **Persistência Local**: Seus dados são salvos no navegador para não perdê-los ao recarregar.
+- **Cadastro de Jogadores**: nome, posição (Defensor, Meia ou Atacante), 3 atributos ofensivos + 3 defensivos por posição, e uma nota geral de recomposição defensiva (peso alto no equilíbrio).
+- **Improviso controlado**: Defensor e Atacante só improvisam como Meia; o Meia improvisa em qualquer posição.
+- **3 sistemas táticos**: Ofensiva (2-2-2), Equilibrada (1-4-1) e Defensiva (2-3-1).
+- **Algoritmo de Equilíbrio com foco na defesa**: simula milhares de escalações e escolhe a que deixa a força defensiva mais parecida entre os times (para não ter time goleável), sem abrir mão do equilíbrio geral.
+- **Testes automatizados** (Vitest) cobrindo cenários fáceis e difíceis (poucos defensores, poucos meias, poucos atacantes, elenco desnivelado).
+- **Interface Responsiva** e **Persistência Local** (localStorage via Zustand), com migração automática de dados de versões antigas do app.
 
 ## 🛠️ Tecnologias Utilizadas
 
-- [React 19](https://react.dev/) - Biblioteca para interfaces de usuário.
-- [TypeScript](https://www.typescriptlang.org/) - Tipagem estática para maior segurança.
-- [Vite](https://vitejs.dev/) - Bundler rápido para desenvolvimento.
-- [Zustand](https://zustand-demo.pmnd.rs/) - Gerenciamento de estado leve e eficiente.
-- [Tailwind CSS](https://tailwindcss.com/) - Estilização moderna via utilitários.
-- [Lucide React](https://lucide.dev/) - Biblioteca de ícones.
+- [React 19](https://react.dev/) — Biblioteca para interfaces de usuário.
+- [TypeScript](https://www.typescriptlang.org/) — Tipagem estática.
+- [Vite](https://vitejs.dev/) — Bundler.
+- [Vitest](https://vitest.dev/) — Testes automatizados.
+- [Zustand](https://zustand-demo.pmnd.rs/) — Estado global com persistência.
+- [Lucide React](https://lucide.dev/) — Ícones.
 
 ## 📂 Estrutura de Arquivos
 
 ```text
 src/
-├── assets/          # Imagens e recursos estáticos
-├── components/      # Componentes reutilizáveis da interface
-│   ├── PlayerCard.tsx    # Card de exibição do jogador
-│   ├── PlayerForm.tsx    # Formulário de cadastro/edição
-│   ├── PlayersTab.tsx    # Aba de listagem de jogadores
-│   ├── SimulationTab.tsx # Aba de geração de times
-│   └── StarRating.tsx    # Componente de avaliação por estrelas
-├── store/           # Estado global (Zustand)
-│   └── usePlayerStore.ts # Gerenciamento de jogadores e times
-├── types/           # Definições de interfaces e tipos TypeScript
-│   └── index.ts
-├── utils/           # Lógica de negócio e algoritmos
-│   ├── balancer.ts       # Algoritmo de balanceamento de equipes
-│   └── balancer/    # Módulo do Motor de Equilíbrio
-│       ├── formations.ts # Definições de sistemas táticos e vagas
-│       ├── helpers.ts    # Utilitários e lógica de rótulos/improviso
-│       └── scoring.ts    # Fórmulas de cálculo de desempenho
-├── App.tsx          # Componente principal e layout
-└── main.tsx         # Ponto de entrada da aplicação
+├── domain/              # Modelo de dados puro (sem lógica de negócio pesada)
+│   ├── types.ts             # Player, Team, Position, FormationType, SimulationResult...
+│   ├── playerAttributes.ts  # Metadados dos atributos (labels, defaults, normalização)
+│   └── formations.ts        # As 3 formações táticas e suas vagas
+├── engine/              # Motor de balanceamento (lógica pura, testável)
+│   ├── scoring.ts           # Fórmulas de nota por papel + "força defensiva" do jogador
+│   ├── improvisation.ts     # Matriz de improviso e rótulos de papel
+│   ├── combinatorics.ts     # Combinações (usado para escolher goleiros)
+│   ├── generateTeams.ts     # Algoritmo principal de geração/equilíbrio de times
+│   ├── testFixtures.ts      # Geradores de elenco para os testes (fácil/difícil)
+│   └── generateTeams.test.ts# Suíte de testes de equilíbrio
+├── store/               # Estado global (Zustand)
+│   ├── usePlayerStore.ts    # Jogadores, opções, persistência
+│   └── migration.ts         # Migração do modelo antigo (4 posições) para o atual
+├── features/
+│   ├── players/             # Cadastro de jogadores (form, card, lista, import/export)
+│   └── simulation/           # Geração e visualização das escalações
+├── components/           # Componentes de UI genéricos e reutilizáveis (StarRating)
+├── App.tsx / main.tsx    # Ponto de entrada
 ```
 
 ## 🔧 Como Executar
@@ -56,7 +57,12 @@ src/
    npm run dev
    ```
 
-3. Para build de produção:
+3. Rode os testes automatizados do algoritmo de balanceamento:
+   ```bash
+   npm run test
+   ```
+
+4. Para build de produção:
    ```bash
    npm run build
    ```
