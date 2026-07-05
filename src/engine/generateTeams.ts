@@ -17,6 +17,20 @@ const GK_DEFENSIVE_WEIGHT = 0.3;
 /** Diferença de equilíbrio defensivo (em pontos de variância) considerada "praticamente igual". */
 const DEFENSIVE_TIE_EPSILON = 6;
 
+/**
+ * Bônus pra priorizar, na defesa, um jogador que também sabe jogar no gol
+ * (isGoalkeeper), quando o time ainda não tem nenhuma cobertura de goleiro
+ * (nem um goleiro nativo escalado, nem ninguém na linha marcado como
+ * isGoalkeeper). Isso garante, sempre que possível, que o time tenha pelo
+ * menos alguém que consiga cobrir o gol na prática — importante porque um
+ * jogador nunca pode ser escalado como goleiro E como defensor ao mesmo
+ * tempo (ou é um, ou é outro): quando ele não é o goleiro titular do time,
+ * ele entra normalmente na defesa, mas continua sendo "o jogador que sabe
+ * jogar no gol" daquele time se precisar (inclusive pra emprestar pro time
+ * de fora, ou assumir o gol se o goleiro titular não puder jogar).
+ */
+const GK_BACKUP_BONUS = 0.5;
+
 interface TeamData {
   id: number;
   name: string;
@@ -32,6 +46,16 @@ const sumSquaredDeviation = (values: number[]): number => {
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   return values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length;
 };
+
+/** O time já tem alguém que cobre o gol (o titular, ou um jogador de linha que também joga no gol)? */
+const hasGkCoverage = (team: TeamData): boolean =>
+  team.gk !== undefined || team.players.some(tp => tp.player.isGoalkeeper);
+
+/** O time já tem pelo menos um Atacante de origem (não improvisado) escalado? */
+const hasNativeAtacante = (team: TeamData): boolean =>
+  team.players.some(tp => tp.roleShort === 'ATA' && tp.player.position === 'ATACANTE');
+
+const isPivotMeia = (p: Player): boolean => p.position === 'MEIA' && p.pivotFriendly;
 
 const addPlayerToTeam = (
   team: TeamData,
@@ -50,23 +74,69 @@ const addPlayerToTeam = (
   });
 };
 
-const selectBestPlayerIndex = (slot: FormationSlot, pool: Player[], noise: number): number => {
+interface SelectionContext {
+  /** Time ainda não tem cobertura de gol — dar bônus pra quem também joga no gol, na defesa. */
+  needsGkBackup: boolean;
+  /**
+   * Time ainda não tem nenhum Atacante de origem — se a vaga de Atacante só puder ser
+   * preenchida por improviso, um Meia "pivô" disponível tem prioridade absoluta sobre
+   * qualquer outro Meia, mesmo que isso derrube o overall do time (é o que aconteceria
+   * na prática, dado o perfil desse jogador).
+   */
+  forcePivotForAtacante: boolean;
+}
+
+const NO_CONTEXT: SelectionContext = { needsGkBackup: false, forcePivotForAtacante: false };
+
+const selectBestPlayerIndex = (
+  slot: FormationSlot,
+  pool: Player[],
+  noise: number,
+  ctx: SelectionContext = NO_CONTEXT
+): number => {
   let bestNativeIdx = -1, bestNativeScore = -Infinity;
+  // Bucket "forçado": só populado quando o time não tem nenhum Atacante nativo e há um
+  // Meia pivô disponível — tem prioridade ABSOLUTA sobre o fallback comum, mesmo que
+  // outro Meia tenha nota maior (é o que aconteceria na prática, dado o perfil do jogador).
+  let bestForcedIdx = -1, bestForcedScore = -Infinity;
+  // Bucket "comum": fallback normal (inclui Meia pivô disputando Atacante quando o time
+  // já tem um Atacante nativo — nesse caso ele só recebe um bônus pequeno, sem prioridade dura).
   let bestFallbackIdx = -1, bestFallbackScore = -Infinity;
+  // Bucket "de último recurso": Meia pivô tentando vaga de Defensor — só é usado se não
+  // sobrar nenhuma outra opção nos buckets acima.
+  let bestLastResortIdx = -1, bestLastResortScore = -Infinity;
+
+  const gkBonusFor = (player: Player): number =>
+    ctx.needsGkBackup && slot.family === 'DEFENSOR' && player.isGoalkeeper ? GK_BACKUP_BONUS : 0;
 
   for (let i = 0; i < pool.length; i++) {
     const player = pool[i];
+
     if (slot.allowedOriginalPositions.includes(player.position)) {
-      const score = slot.calcScore(player) + noise;
+      const score = slot.calcScore(player) + noise + gkBonusFor(player);
       if (score > bestNativeScore) { bestNativeScore = score; bestNativeIdx = i; }
-    } else if (isImprovisationAllowed(player.position, slot.family)) {
-      // Bônus pequeno pro Meia "pivô" ganhar a vaga de Atacante frente a outro
-      // Meia com nível parecido — nunca chega a superar uma diferença de nível real.
-      const score = slot.calcScore(player) + noise + getImprovisationBonus(player, slot.family);
+      continue;
+    }
+
+    if (!isImprovisationAllowed(player.position, slot.family)) continue;
+
+    const score = slot.calcScore(player) + noise + gkBonusFor(player) + getImprovisationBonus(player, slot.family);
+
+    if (slot.family === 'DEFENSOR' && isPivotMeia(player)) {
+      // Evite escalar um Meia pivô na defesa — só usa se não sobrar mais ninguém.
+      if (score > bestLastResortScore) { bestLastResortScore = score; bestLastResortIdx = i; }
+    } else if (slot.family === 'ATACANTE' && isPivotMeia(player) && ctx.forcePivotForAtacante) {
+      // Time sem nenhum Atacante nativo: o Meia pivô tem prioridade absoluta pro ataque.
+      if (score > bestForcedScore) { bestForcedScore = score; bestForcedIdx = i; }
+    } else {
       if (score > bestFallbackScore) { bestFallbackScore = score; bestFallbackIdx = i; }
     }
   }
-  return bestNativeIdx !== -1 ? bestNativeIdx : bestFallbackIdx;
+
+  if (bestNativeIdx !== -1) return bestNativeIdx;
+  if (bestForcedIdx !== -1) return bestForcedIdx;
+  if (bestFallbackIdx !== -1) return bestFallbackIdx;
+  return bestLastResortIdx;
 };
 
 export const generateTeams = (
@@ -132,7 +202,11 @@ export const generateTeams = (
 
     const assignSlot = (team: TeamData, slot: FormationSlot & { originalIndex: number }): boolean => {
       if (workingPool.length === 0) return false;
-      const idx = selectBestPlayerIndex(slot, workingPool, getNoise());
+      const ctx: SelectionContext = {
+        needsGkBackup: slot.family === 'DEFENSOR' && !hasGkCoverage(team),
+        forcePivotForAtacante: slot.family === 'ATACANTE' && !hasNativeAtacante(team),
+      };
+      const idx = selectBestPlayerIndex(slot, workingPool, getNoise(), ctx);
       if (idx === -1) return false;
       const chosen = workingPool.splice(idx, 1)[0];
       team.reqs = team.reqs.filter(r => r.originalIndex !== slot.originalIndex);

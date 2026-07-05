@@ -33,12 +33,30 @@ Meia; o Meia improvisa em qualquer posição. Essa regra vive em `src/engine/imp
 `scoreDefensorRole`/`scoreMeiaRole`/`scoreAtacanteRole` precisam ter um branch para cada posição
 que a matriz de improviso permite, senão o jogador cai numa nota neutra fixa).
 
-O campo `Player.pivotFriendly` (só relevante para Meias) dá um pequeno bônus de pontuação — ver
-`getImprovisationBonus` em `src/engine/improvisation.ts` — quando esse Meia disputa uma vaga de
-Atacante por improviso, para priorizá-lo sobre outro Meia de nível parecido. O bônus é
-propositalmente pequeno (não deve superar uma diferença real de nível) e só se aplica ao par
-Meia→Atacante. O rótulo exibido nesse caso passa a ser "Atacante (pivô)" em vez de "Atacante
+O campo `Player.pivotFriendly` (só relevante para Meias) afeta a escolha de QUEM improvisa em duas
+situações, ambas implementadas em `selectBestPlayerIndex` (`src/engine/generateTeams.ts`), que usa
+um esquema de "buckets" com prioridade rígida (nativo > forçado > fallback comum > último recurso):
+
+- **Meia pivô virando Atacante**: se a vaga de Atacante só pode ser preenchida por improviso e o
+  time AINDA NÃO tem nenhum Atacante de origem (`hasNativeAtacante`), o Meia pivô disponível é
+  escalado ali com prioridade ABSOLUTA (`forcePivotForAtacante`), mesmo que outro Meia tivesse nota
+  melhor — isso pode derrubar o overall do time de propósito, porque é o que aconteceria na prática
+  dado o perfil desse jogador. Se o time JÁ tem pelo menos um Atacante de origem, o pivô só ganha um
+  bônus pequeno (`getImprovisationBonus` em `improvisation.ts`, +0.4 numa escala de 6 estrelas) que
+  não deve superar uma diferença real de nível.
+- **Meia pivô virando Defensor**: o motor EVITA escalar um Meia pivô na defesa — ele só entra ali
+  como último recurso, quando não sobra nenhum outro Meia disponível pro fallback daquela vaga.
+
+O rótulo exibido quando o pivô joga de Atacante passa a ser "Atacante (pivô)" em vez de "Atacante
 (improvisado)" (`getRoleLabels`, parâmetro `isPivotFit`).
+
+Um jogador nunca é escalado como Goleiro e como Defensor ao mesmo tempo (ou é um, ou é outro): quem
+vira goleiro sai do pool de jogadores de linha daquela simulação. Quando um time não tem goleiro
+nativo escalado (`hasGkCoverage` retorna falso — nem goleiro titular, nem ninguém isGoalkeeper na
+linha), o motor dá um bônus (`GK_BACKUP_BONUS`, também em `selectBestPlayerIndex`) pra priorizar um
+jogador que também sabe jogar no gol numa das vagas de Defensor desse time — na prática, isso deixa
+o time preparado pra ter alguém cobrindo o gol se precisar (inclusive pra emprestar pro time que
+estiver de fora, no formato de rodízio com 3 times).
 
 O equilíbrio da defesa entre os times (para nenhum time ficar "goleável") é calculado por
 `defensiveContribution()` em `scoring.ts` e agregado por time em `generateTeams.ts`
@@ -90,10 +108,19 @@ seguro é `rsync -a --checksum --delete --exclude node_modules --exclude dist --
 
 **Cuidado com corrupção/truncamento ao editar arquivos nessa pasta montada do Windows:** as
 ferramentas de escrita de arquivo já truncaram arquivos no meio (cortando o resto do conteúdo sem
-avisar) várias vezes nesse projeto — inclusive `.ts`, `.tsx` e `.css`. Depois de qualquer edição
-importante, verifique o arquivo final com algo como `wc -c arquivo` + `tail -c 200 arquivo` (o
-arquivo não pode terminar no meio de uma expressão) antes de confiar que a edição funcionou. Na
-dúvida, reescreva o arquivo inteiro em vez de aplicar um diff pequeno.
+avisar) várias vezes nesse projeto — inclusive `.ts`, `.tsx`, `.css` e este próprio `instructions.md`.
+Pior: já aconteceu de uma leitura logo em seguida mostrar o conteúdo NOVO (correto) enquanto o
+arquivo de fato salvo no disco continuava com o conteúdo VELHO/truncado — ou seja, não dá pra confiar
+cegamente numa única leitura de confirmação. Depois de qualquer edição importante nessa pasta:
+
+1. Verifique o arquivo final por fora da ferramenta de edição (ex.: `wc -c arquivo` + `tail -c 200
+   arquivo` via shell) — o arquivo não pode terminar no meio de uma expressão.
+2. Repita a checagem depois de uma pequena espera (2-5s) — já aconteceu do arquivo aparecer certo
+   na hora e depois "voltar" para uma versão antiga.
+3. Se desconfiar de corrupção, escreva o conteúdo completo num arquivo NOVO (nome ainda não usado
+   nessa sessão) numa pasta de rascunho, confirme que ele está correto por fora da ferramenta, e só
+   então copie por cima do arquivo final (ex.: via `cp` no shell). Reescrever em cima do mesmo nome
+   repetidas vezes é o cenário onde a corrupção mais aparece.
 
 ## 🚀 Deploy
 

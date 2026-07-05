@@ -56,4 +56,51 @@ describe('generateTeams — preferência por Meia "pivô" no improviso de Atacan
     expect(pivotSlot).toBeDefined();
     expect(pivotSlot!.roleLabel).toBe('Atacante (pivô)');
   });
+
+  it('quando o time não tem nenhum Atacante nativo, o Meia pivô é escalado no ataque mesmo sendo claramente pior que os outros Meias (mesmo que isso derrube o overall)', () => {
+    // Formação EQUILIBRADA (1 Defensor + 4 Meia + 1 Atacante). Sem nenhum Atacante
+    // nativo no pool, a única vaga de Atacante tem que ser preenchida por um Meia.
+    // O Meia pivô é propositalmente MUITO pior (nível 1) que os outros 4 Meias
+    // (nível 6) — mesmo assim, ele deve ser o escolhido pro ataque, porque não há
+    // nenhum Atacante nativo no time (regra "força" o pivô, ao contrário do bônus
+    // pequeno usado quando o time já tem pelo menos um Atacante de origem).
+    const defensorNativo = makePlayer('DEFENSOR', 3, { name: 'Defensor Único' });
+    const meiaPivo = makePlayer('MEIA', 1, { name: 'Pivo Fraco', pivotFriendly: true });
+    const meiasFortes = Array.from({ length: 4 }, (_, i) => makePlayer('MEIA', 6, { name: `Meia Forte ${i + 1}` }));
+    const pool = [defensorNativo, meiaPivo, ...meiasFortes];
+
+    const results = generateTeams(pool, 'EQUILIBRADA', 1, 300, true, true);
+    expect(results.length).toBeGreaterThan(0);
+
+    for (const result of results) {
+      const team = result.teams[0];
+      const pivotSlot = team.players.find(tp => tp.player.id === meiaPivo.id);
+      expect(pivotSlot).toBeDefined();
+      expect(pivotSlot!.roleShort).toBe('ATA');
+    }
+  });
+
+  it('quando o time já tem um Atacante nativo, o Meia pivô NÃO é forçado na segunda vaga de Atacante (só ganha o bônus suave)', () => {
+    // Formação OFENSIVA (2 Atacante). Com 1 Atacante nativo garantindo a primeira
+    // vaga, a segunda vaga é fallback "comum" (soft bonus), não "forçado" — um Meia
+    // não-pivô MUITO melhor deve vencer o Meia pivô fraco nessa segunda vaga.
+    const defensores = [makePlayer('DEFENSOR', 3), makePlayer('DEFENSOR', 3)];
+    const atacanteNativo = makePlayer('ATACANTE', 3);
+    const meiaPivoFraco = makePlayer('MEIA', 1, { name: 'Pivo Fraco', pivotFriendly: true });
+    const meiaForte = makePlayer('MEIA', 6, { name: 'Meia Forte', pivotFriendly: false });
+    const meiaExtra = makePlayer('MEIA', 3, { name: 'Meia Extra', pivotFriendly: false });
+    const pool = [...defensores, atacanteNativo, meiaPivoFraco, meiaForte, meiaExtra];
+
+    const results = generateTeams(pool, 'OFENSIVA', 1, 300, true, true);
+    expect(results.length).toBeGreaterThan(0);
+
+    for (const result of results) {
+      const team = result.teams[0];
+      const secondAtacante = team.players.find(
+        tp => tp.roleShort === 'ATA' && tp.player.position === 'MEIA'
+      );
+      expect(secondAtacante).toBeDefined();
+      expect(secondAtacante!.player.name).toBe('Meia Forte');
+    }
+  });
 });

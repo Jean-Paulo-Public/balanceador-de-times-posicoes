@@ -48,10 +48,17 @@ export const generateTeamObservations = (team: Team, allTeams: Team[]): string[]
     }
   }
 
-  // 3) Time sem goleiro dedicado (ninguém entrou como Goleiro nativo).
+  // 3) Time sem goleiro dedicado (ninguém entrou como Goleiro nativo). Se pelo menos um
+  // jogador da linha também sabe jogar no gol (isGoalkeeper), citar quem pode cobrir —
+  // essa priorização já acontece no motor de balanceamento (ver GK_BACKUP_BONUS).
   const hasGoalkeeper = team.players.some(tp => tp.assignedRole === 'Goleiro');
   if (!hasGoalkeeper) {
-    observations.push('Time sem goleiro dedicado — combinem antes quem cobre o gol.');
+    const backupGks = line.filter(tp => tp.player.isGoalkeeper).map(tp => tp.player.name);
+    if (backupGks.length > 0) {
+      observations.push(`Time sem goleiro fixo, mas ${backupGks.join(', ')} também joga(m) no gol — combinem quem cobre se precisar.`);
+    } else {
+      observations.push('Time sem goleiro dedicado e sem ninguém na linha que jogue no gol — combinem antes quem cobre essa função.');
+    }
   }
 
   // 4) Muitos jogadores improvisados na linha (pode afetar entrosamento tático).
@@ -65,6 +72,15 @@ export const generateTeamObservations = (team: Team, allTeams: Team[]): string[]
   const pivots = line.filter(tp => tp.player.pivotFriendly && tp.roleLabel?.includes('pivô')).map(tp => tp.player.name);
   if (pivots.length > 0) {
     observations.push(`${pivots.join(', ')} ${pivots.length > 1 ? 'estão' : 'está'} de pivô — priorizem bola no chão e apoio de curta distância pra ele(s) segurar.`);
+  }
+
+  // 5b) Meia pivô escalado na defesa por falta de opção (o motor evita isso sempre que
+  // possível — só acontece quando não sobra nenhum outro Meia pra fazer esse papel).
+  const pivotsOnDefense = line
+    .filter(tp => tp.roleShort === 'DEF' && tp.player.pivotFriendly && tp.player.position === 'MEIA')
+    .map(tp => tp.player.name);
+  if (pivotsOnDefense.length > 0) {
+    observations.push(`${pivotsOnDefense.join(', ')} ${pivotsOnDefense.length > 1 ? 'foram escalados' : 'foi escalado'} na defesa por falta de opção — ${pivotsOnDefense.length > 1 ? 'rendem' : 'rende'} mais no ataque, então fiquem de olho na marcação.`);
   }
 
   // 6) Ataque nitidamente mais fraco que a defesa (pode ter dificuldade de fazer gols).
