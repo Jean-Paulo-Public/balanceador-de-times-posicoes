@@ -151,11 +151,14 @@ export const generateTeams = (
   if (pool.length < numTeams * 6) return [];
 
   const nativeGks = pool.filter(p => p.isGoalkeeper);
-  let targetGkCount = !neverScaleGoalkeepers ? Math.min(nativeGks.length, numTeams) : 0;
-  if (!neverScaleGoalkeepers && numTeams === 3) {
-    if (pool.length === 20) targetGkCount = Math.min(nativeGks.length, 2);
-    else if (pool.length === 19) targetGkCount = Math.min(nativeGks.length, 1);
-  }
+  // Reservar um goleiro nativo por time só é viável se sobrar gente suficiente pra
+  // preencher as vagas de linha depois de tirá-los do pool. Num elenco justo (sem
+  // ninguém "de sobra" além do mínimo de numTeams*6), reservar qualquer goleiro
+  // dedicado inviabilizaria TODA a escalação — nesse caso a regra cede e os
+  // jogadores marcados como goleiro simplesmente jogam na posição de origem deles,
+  // como qualquer outro jogador, para garantir que a escalação continue possível.
+  const spareCapacity = Math.max(0, pool.length - numTeams * 6);
+  const targetGkCount = !neverScaleGoalkeepers ? Math.min(nativeGks.length, numTeams, spareCapacity) : 0;
   const goalkeeperCombos = targetGkCount > 0 ? getCombinations(nativeGks, targetGkCount) : [];
 
   const results: SimulationResult[] = [];

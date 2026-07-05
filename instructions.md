@@ -58,6 +58,16 @@ jogador que também sabe jogar no gol numa das vagas de Defensor desse time — 
 o time preparado pra ter alguém cobrindo o gol se precisar (inclusive pra emprestar pro time que
 estiver de fora, no formato de rodízio com 3 times).
 
+**Reservar goleiro nativo só quando é viável.** `targetGkCount` (perto do início de `generateTeams`)
+é limitado por `spareCapacity = pool.length - numTeams * 6` — a "sobra" de jogadores além do mínimo
+de linha. Já existiu um bug em que, num elenco justo (sem ninguém de sobra), reservar um goleiro
+dedicado por time tirava gente demais do pool de linha e invalidava TODAS as simulações (a tela
+mostrava "nenhuma combinação viável", mas desmarcar "nunca escalar goleiros" resolvia — sinal claro
+de que o problema era a reserva de goleiro, não o resto do motor). Por isso `targetGkCount` nunca
+pode passar de `spareCapacity`: se não sobrar ninguém, nenhum time reserva goleiro dedicado nessa
+simulação, e os jogadores marcados como goleiro simplesmente jogam na posição de origem deles. Teste
+de regressão em `src/engine/goalkeeperFeasibility.test.ts`.
+
 O equilíbrio da defesa entre os times (para nenhum time ficar "goleável") é calculado por
 `defensiveContribution()` em `scoring.ts` e agregado por time em `generateTeams.ts`
 (`defensiveOverall`). Esse é o critério de ordenação PRIMÁRIO dos cenários simulados — só usa o
