@@ -3,6 +3,9 @@ import styles from './FieldMap.module.css';
 
 interface FieldMapProps {
   playersList: TeamSlotPlayer[];
+  /** Versão menor (usada como referência dentro da Lista de Times) — mesmo
+   * desenho, só com o wrapper mais estreito e os chips menores, sem legenda. */
+  compact?: boolean;
 }
 
 // Ordem de cima (ataque) para baixo (goleiro), como numa vista tática de campo.
@@ -13,14 +16,14 @@ const ROWS: { area: string; isGK: boolean }[] = [
   { area: 'GK', isGK: true },
 ];
 
-export function FieldMap({ playersList }: FieldMapProps) {
+export function FieldMap({ playersList, compact = false }: FieldMapProps) {
   const hasGoalkeeper = playersList.some(p => p.roleShort === 'GK');
   const rows = ROWS.filter(r => !r.isGK || hasGoalkeeper);
 
   return (
-    <div className={styles.wrapper}>
-      <span className={styles.caption}>Posicionamento tático</span>
-      <div className={styles.pitch}>
+    <div className={`${styles.wrapper} ${compact ? styles.wrapperCompact : ''}`}>
+      {!compact && <span className={styles.caption}>Posicionamento tático</span>}
+      <div className={`${styles.pitch} ${compact ? styles.pitchCompact : ''}`}>
         <div className={styles.pitchLines} />
         <div className={styles.centerLine} />
         <div className={styles.centerCircle} />
@@ -37,7 +40,7 @@ export function FieldMap({ playersList }: FieldMapProps) {
                   return (
                     <span
                       key={idx}
-                      className={`${styles.playerChip} ${row.isGK ? styles.gkChip : ''} ${isNonPivotAtacante ? styles.secondStriker : ''}`}
+                      className={`${styles.playerChip} ${compact ? styles.playerChipCompact : ''} ${row.isGK ? styles.gkChip : ''} ${isNonPivotAtacante ? styles.secondStriker : ''}`}
                       title={p.player.name}
                     >
                       {p.player.name}

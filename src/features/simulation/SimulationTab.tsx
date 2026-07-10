@@ -8,7 +8,8 @@ import { FieldMap } from './FieldMap';
 import { TeamRosterList } from './TeamRosterList';
 import { buildRosterText } from './rosterText';
 import { overallColor } from './overallColor';
-import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert, Eye, MessageCircle } from 'lucide-react';
+import { buildFieldMapsImage } from './fieldMapImage';
+import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert, Eye, MessageCircle, Image as ImageIcon } from 'lucide-react';
 import styles from './SimulationTab.module.css';
 
 const MAX_TEAMS = 4;
@@ -25,6 +26,7 @@ export function SimulationTab() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasSimulated, setHasSimulated] = useState(false);
+  const [isExportingImage, setIsExportingImage] = useState(false);
 
   const maxFeasibleTeams = Math.max(1, Math.floor(activePlayersCount / 6));
   const numTeams = Math.min(desiredNumTeams, maxFeasibleTeams);
@@ -50,6 +52,42 @@ export function SimulationTab() {
     const text = buildRosterText(currentSimulation.teams);
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  /**
+   * Gera uma única imagem com os campinhos de todos os times lado a lado.
+   * Se o navegador suportar Web Share com arquivos (celulares, principalmente),
+   * abre o seletor nativo de compartilhamento — o WhatsApp aparece como uma das
+   * opções, igual anexar uma foto normalmente. Sem suporte (a maioria dos
+   * navegadores desktop), baixa o PNG pro usuário anexar manualmente — o
+   * campinho compacto na Lista de Times já fica disponível como referência
+   * visual de qualquer forma, com ou sem esse export.
+   */
+  const handleExportFieldImage = async () => {
+    if (!currentSimulation || isExportingImage) return;
+    setIsExportingImage(true);
+    try {
+      const blob = await buildFieldMapsImage(currentSimulation.teams);
+      const file = new File([blob], 'campinhos-times.png', { type: 'image/png' });
+
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Campinhos dos Times' });
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'campinhos-times.png';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      if ((error as Error)?.name !== 'AbortError') {
+        console.error('Falha ao exportar os campinhos como imagem:', error);
+      }
+    } finally {
+      setIsExportingImage(false);
+    }
   };
 
   return (
@@ -160,9 +198,14 @@ export function SimulationTab() {
           <div className={styles.rosterSection}>
             <div className={styles.rosterHeader}>
               <h3 className={styles.rosterTitle}>Lista dos Times</h3>
-              <button className="btn-secondary" onClick={handleExportWhatsApp}>
-                <MessageCircle size={16} /> Exportar para WhatsApp
-              </button>
+              <div className={styles.rosterActions}>
+                <button className="btn-secondary" onClick={handleExportFieldImage} disabled={isExportingImage}>
+                  <ImageIcon size={16} /> {isExportingImage ? 'Gerando imagem...' : 'Exportar Campinhos (Imagem)'}
+                </button>
+                <button className="btn-secondary" onClick={handleExportWhatsApp}>
+                  <MessageCircle size={16} /> Exportar para WhatsApp
+                </button>
+              </div>
             </div>
             <TeamRosterList teams={currentSimulation.teams} />
           </div>

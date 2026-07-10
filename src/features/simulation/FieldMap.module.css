@@ -8,6 +8,15 @@
   margin: 4px 0 0 0;
 }
 
+.wrapperCompact {
+  width: 130px;
+  margin: 0;
+}
+
+.pitchCompact {
+  padding: 5px 4px;
+}
+
 .caption {
   font-size: 0.68rem;
   color: var(--color-text-muted);
@@ -96,6 +105,12 @@
   max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.playerChipCompact {
+  font-size: 0.56rem;
+  padding: 2px 5px;
+  max-width: 56px;
 }
 
 .gkChip {

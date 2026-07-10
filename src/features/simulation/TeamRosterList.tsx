@@ -1,6 +1,7 @@
 import type { Team } from '../../domain/types';
 import { buildTeamSections, formationLabelFor } from './rosterText';
 import { overallColor } from './overallColor';
+import { FieldMap } from './FieldMap';
 import styles from './TeamRosterList.module.css';
 
 interface TeamRosterListProps {
@@ -33,6 +34,9 @@ export function TeamRosterList({ teams }: TeamRosterListProps) {
                   <div className={styles.badgeValue} style={{ background: overallColor(team.defensiveOverall) }}>{team.defensiveOverall}</div>
                 </div>
               </div>
+            </div>
+            <div className={styles.compactFieldWrapper}>
+              <FieldMap playersList={team.players} compact />
             </div>
             {sections.map(section => (
               <div key={section.label} className={styles.section}>
