@@ -75,6 +75,15 @@
   z-index: 1;
 }
 
+/* Atacante sem facilidade de pivô: exibido alguns pixels mais atrás dentro da
+   própria linha de ataque, pra indicar que ele não é a referência de área.
+   Usa `transform` (não `margin`) de propósito: desloca só esse chip, sem
+   alterar a altura da linha nem a posição do pivô (que fica exatamente no
+   lugar normal de um atacante, sem nenhum deslocamento). */
+.secondStriker {
+  transform: translateY(12px);
+}
+
 .playerChip {
   background: rgba(5, 7, 10, 0.72);
   color: white;

@@ -62,7 +62,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
       isGoalkeeper,
       position,
       stats,
-      pivotFriendly: position === 'MEIA' ? pivotFriendly : false,
+      pivotFriendly: position === 'MEIA' || position === 'ATACANTE' ? pivotFriendly : false,
     };
 
     if (editingPlayer) {
@@ -125,19 +125,29 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
           </div>
           <p className={styles.helpText}>{POSITION_HELP[position]}</p>
 
-          {position === 'MEIA' && (
+          {(position === 'MEIA' || position === 'ATACANTE') && (
             <label className="checkbox-group" style={{ marginTop: 'var(--space-3)' }}>
               <input
                 type="checkbox"
                 checked={pivotFriendly}
                 onChange={e => setPivotFriendly(e.target.checked)}
               />
-              Facilidade em ser pivô
+              {position === 'MEIA' ? 'Facilidade em ser pivô' : 'É um pivô de referência (fica na área)'}
             </label>
           )}
           {position === 'MEIA' && pivotFriendly && (
             <p className={styles.helpText}>
               Esse Meia terá prioridade sobre os demais para improvisar como Atacante quando o time precisar, desde que isso não custe muito overall.
+            </p>
+          )}
+          {position === 'ATACANTE' && pivotFriendly && (
+            <p className={styles.helpText}>
+              Esse Atacante é a referência de área (bola aérea, jogo de costas pro gol) — terá preferência para NÃO ser recuado como Meia quando o time precisar improvisar alguém pra trás, desde que isso não custe muito overall.
+            </p>
+          )}
+          {position === 'ATACANTE' && !pivotFriendly && (
+            <p className={styles.helpText}>
+              Sem essa marcação, ele é tratado como um segundo atacante mais móvel — pode recuar como Meia com mais naturalidade se o time precisar.
             </p>
           )}
         </div>

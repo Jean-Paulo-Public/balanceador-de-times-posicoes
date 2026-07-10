@@ -63,6 +63,25 @@
   margin-top: 8px;
 }
 
+.rosterSection {
+  margin-bottom: var(--space-5);
+}
+
+.rosterHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.rosterTitle {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--color-primary);
+}
+
 .imbalanceBanner {
   margin-bottom: var(--space-5);
   padding: var(--space-4);

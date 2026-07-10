@@ -29,11 +29,21 @@ export function FieldMap({ playersList }: FieldMapProps) {
           return (
             <div key={row.area} className={styles.row}>
               {playersInRow.length > 0 ? (
-                playersInRow.map((p, idx) => (
-                  <span key={idx} className={`${styles.playerChip} ${row.isGK ? styles.gkChip : ''}`} title={p.player.name}>
-                    {p.player.name}
-                  </span>
-                ))
+                playersInRow.map((p, idx) => {
+                  // Atacante que não é "pivô de referência" fica alguns pixels mais atrás
+                  // dentro da própria linha de ataque: evidencia que ele não é a referência
+                  // de área pra bola aérea, e sim um segundo atacante que vem de trás pra finalizar.
+                  const isNonPivotAtacante = row.area === 'ATA' && !p.player.pivotFriendly;
+                  return (
+                    <span
+                      key={idx}
+                      className={`${styles.playerChip} ${row.isGK ? styles.gkChip : ''} ${isNonPivotAtacante ? styles.secondStriker : ''}`}
+                      title={p.player.name}
+                    >
+                      {p.player.name}
+                    </span>
+                  );
+                })
               ) : (
                 <span className={styles.emptySlot}>—</span>
               )}

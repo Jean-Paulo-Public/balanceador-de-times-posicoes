@@ -56,10 +56,16 @@ export interface Player {
   position: Position;
   stats: PlayerStats;
   /**
-   * Só faz sentido para Meias: indica que o jogador se sai bem quando precisa
-   * segurar bola de costas pro gol / atuar de pivô. Usado para priorizar esse
-   * jogador em improvisos como Atacante, em vez de outro Meia qualquer — desde
-   * que a diferença de nível não seja grande (ver getImprovisationBonus).
+   * Indica facilidade/perfil de jogar como pivô (referência ofensiva de costas
+   * pro gol). Relevante em duas posições, com efeito oposto no improviso:
+   * - Meia: prioriza esse jogador em improvisos como Atacante, em vez de outro
+   *   Meia qualquer — desde que a diferença de nível não seja grande.
+   * - Atacante: indica que ele É a referência de área do time (bola aérea,
+   *   jogo de costas pro gol), então tem preferência para NÃO ser recuado como
+   *   Meia quando o time precisa improvisar alguém pra trás — desde que isso
+   *   não custe muito overall. Um Atacante sem essa marcação é tratado como um
+   *   segundo atacante mais móvel, que pode recuar com mais naturalidade.
+   * Ver getImprovisationBonus (src/engine/improvisation.ts).
    */
   pivotFriendly: boolean;
 }

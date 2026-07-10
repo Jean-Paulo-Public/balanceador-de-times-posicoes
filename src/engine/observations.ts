@@ -83,6 +83,16 @@ export const generateTeamObservations = (team: Team, allTeams: Team[]): string[]
     observations.push(`${pivotsOnDefense.join(', ')} ${pivotsOnDefense.length > 1 ? 'foram escalados' : 'foi escalado'} na defesa por falta de opção — ${pivotsOnDefense.length > 1 ? 'rendem' : 'rende'} mais no ataque, então fiquem de olho na marcação.`);
   }
 
+  // 5c) Atacante "pivô de referência" recuado pra Meia por falta de opção (o motor evita
+  // isso sempre que possível — ver PIVOT_AVOID_MEIA_PENALTY em improvisation.ts — mas
+  // ainda pode acontecer se não sobrar alternativa melhor pro time).
+  const pivotAtacantesAsMeia = line
+    .filter(tp => tp.roleShort === 'MEI' && tp.player.pivotFriendly && tp.player.position === 'ATACANTE')
+    .map(tp => tp.player.name);
+  if (pivotAtacantesAsMeia.length > 0) {
+    observations.push(`${pivotAtacantesAsMeia.join(', ')} ${pivotAtacantesAsMeia.length > 1 ? 'recuaram' : 'recuou'} pra Meia por falta de opção — ${pivotAtacantesAsMeia.length > 1 ? 'são referência' : 'é referência'} de área, não de construção, então não esperem tanto apoio na saída de bola dele(s).`);
+  }
+
   // 6) Ataque nitidamente mais fraco que a defesa (pode ter dificuldade de fazer gols).
   const atkScore = roleAvg(line, 'ATA');
   const defScore = roleAvg(line, 'DEF');

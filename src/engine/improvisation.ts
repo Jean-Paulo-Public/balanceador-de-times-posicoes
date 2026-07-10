@@ -24,9 +24,24 @@ export const isImprovisationAllowed = (playerPosition: Position, roleFamily: Rol
  */
 const PIVOT_IMPROVISATION_BONUS = 0.4;
 
+/**
+ * Penalidade pequena (preferência, não bloqueio) aplicada a um Atacante marcado
+ * como "pivô" quando ele é cogitado pra recuar pra vaga de Meia. Ele é a
+ * referência de área do time (bola aérea, jogo de costas pro gol), não quem
+ * deveria vir de trás ajudar a construir — por isso o motor prefere escalar
+ * ali outro jogador (um Atacante sem essa marcação, um Defensor, etc.), a
+ * menos que a diferença de nível torne isso claramente pior pro time (nesse
+ * caso o pivô ainda pode acabar recuando mesmo assim). Simétrico ao bônus do
+ * Meia pivô pro ataque, só que em sentido contrário.
+ */
+const PIVOT_AVOID_MEIA_PENALTY = -0.4;
+
 export const getImprovisationBonus = (player: Player, roleFamily: RoleFamily): number => {
   if (roleFamily === 'ATACANTE' && player.position === 'MEIA' && player.pivotFriendly) {
     return PIVOT_IMPROVISATION_BONUS;
+  }
+  if (roleFamily === 'MEIA' && player.position === 'ATACANTE' && player.pivotFriendly) {
+    return PIVOT_AVOID_MEIA_PENALTY;
   }
   return 0;
 };

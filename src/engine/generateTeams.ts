@@ -162,6 +162,11 @@ export const generateTeams = (
   const goalkeeperCombos = targetGkCount > 0 ? getCombinations(nativeGks, targetGkCount) : [];
 
   const results: SimulationResult[] = [];
+  // Evita que cenários com escalação IDÊNTICA (mesmos jogadores nas mesmas funções, em
+  // cada time) apareçam mais de uma vez entre os resultados — não agrega nada pro
+  // usuário ver a mesma escalação repetida só porque o sorteio caiu igual em
+  // simulações diferentes.
+  const seenSignatures = new Set<string>();
 
   for (let iter = 0; iter < numSimulations; iter++) {
     const workingPool = [...pool];
@@ -307,6 +312,20 @@ export const generateTeams = (
         bench: t.bench,
       };
     });
+
+    // Assinatura da escalação: quem joga em qual FUNÇÃO (GK/DEF/MEI/ATA), em cada
+    // time, mais quem ficou no banco. Agrupa por `roleShort` (não por `assignedRole`,
+    // que é o id da vaga específica, ex.: "Meia 1" vs "Meia 2") porque, pra quem olha
+    // a lista de jogadores, dois cenários com os mesmos 4 Meias — só trocados entre
+    // as vagas "Meia 1"/"Meia 2"/... — são visualmente a mesma escalação.
+    const ROLE_KEYS = ['GK', 'DEF', 'MEI', 'ATA'];
+    const signature = finalTeams
+      .map(t => `${t.tacticalSystem}|`
+        + ROLE_KEYS.map(role => `${role}:${t.players.filter(tp => tp.roleShort === role).map(tp => tp.player.id).sort().join(',')}`).join(';')
+        + '|B:' + t.bench.map(tp => tp.player.id).sort().join(','))
+      .join('||');
+    if (seenSignatures.has(signature)) continue;
+    seenSignatures.add(signature);
 
     const overalls = finalTeams.map(t => t.overall);
     const defOveralls = finalTeams.map(t => t.defensiveOverall);

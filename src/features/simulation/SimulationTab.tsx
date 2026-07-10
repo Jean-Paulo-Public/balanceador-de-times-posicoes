@@ -5,14 +5,14 @@ import { FORMATION_LABELS } from '../../domain/formations';
 import { generateTeams } from '../../engine/generateTeams';
 import { generateTeamObservations } from '../../engine/observations';
 import { FieldMap } from './FieldMap';
-import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert, Eye } from 'lucide-react';
+import { TeamRosterList } from './TeamRosterList';
+import { buildRosterText } from './rosterText';
+import { overallColor } from './overallColor';
+import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert, Eye, MessageCircle } from 'lucide-react';
 import styles from './SimulationTab.module.css';
 
 const MAX_TEAMS = 4;
 const suggestTeams = (activePlayersCount: number) => (activePlayersCount <= 17 ? 2 : 3);
-
-const overallColor = (value: number) =>
-  value > 75 ? 'var(--color-primary)' : value > 50 ? 'var(--color-accent)' : 'var(--color-danger)';
 
 export function SimulationTab() {
   const { players, neverScaleGoalkeepers, setNeverScaleGoalkeepers, maxSixLinePlayers, setMaxSixLinePlayers } = usePlayerStore();
@@ -44,6 +44,13 @@ export function SimulationTab() {
 
   const currentSimulation = results[currentIndex];
   const isImbalanced = currentSimulation && (currentSimulation.equilibrium > 100 || currentSimulation.defensiveEquilibrium > 100);
+
+  const handleExportWhatsApp = () => {
+    if (!currentSimulation) return;
+    const text = buildRosterText(currentSimulation.teams);
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div className="animate-fade-in">
@@ -132,6 +139,35 @@ export function SimulationTab() {
           )}
         </div>
 
+        {results.length > 0 && currentSimulation && (
+          <div className={styles.scenarioNav}>
+            <button className={`btn-secondary ${styles.navBtn}`} onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={currentIndex === 0}>
+              <ChevronLeft size={24} />
+            </button>
+
+            <div className={styles.scenarioTitle}>
+              <h3>Cenário {currentIndex + 1}</h3>
+              <span className={styles.scenarioSubtitle}>de {results.length} simulações</span>
+            </div>
+
+            <button className={`btn-secondary ${styles.navBtn}`} onClick={() => setCurrentIndex(prev => Math.min(results.length - 1, prev + 1))} disabled={currentIndex === results.length - 1}>
+              <ChevronRight size={24} />
+            </button>
+          </div>
+        )}
+
+        {results.length > 0 && currentSimulation && (
+          <div className={styles.rosterSection}>
+            <div className={styles.rosterHeader}>
+              <h3 className={styles.rosterTitle}>Lista dos Times</h3>
+              <button className="btn-secondary" onClick={handleExportWhatsApp}>
+                <MessageCircle size={16} /> Exportar para WhatsApp
+              </button>
+            </div>
+            <TeamRosterList teams={currentSimulation.teams} />
+          </div>
+        )}
+
         {results.length > 0 && currentSimulation && isImbalanced && (
           <div className={styles.imbalanceBanner}>
             <AlertTriangle size={22} style={{ flexShrink: 0 }} />
@@ -143,21 +179,6 @@ export function SimulationTab() {
 
         {results.length > 0 && currentSimulation && (
           <div>
-            <div className={styles.scenarioNav}>
-              <button className={`btn-secondary ${styles.navBtn}`} onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={currentIndex === 0}>
-                <ChevronLeft size={24} />
-              </button>
-
-              <div className={styles.scenarioTitle}>
-                <h3>Cenário {currentIndex + 1}</h3>
-                <span className={styles.scenarioSubtitle}>de {results.length} simulações</span>
-              </div>
-
-              <button className={`btn-secondary ${styles.navBtn}`} onClick={() => setCurrentIndex(prev => Math.min(results.length - 1, prev + 1))} disabled={currentIndex === results.length - 1}>
-                <ChevronRight size={24} />
-              </button>
-            </div>
-
             <div className={styles.teamsList}>
               {currentSimulation.teams.map((team) => {
                 const observations = generateTeamObservations(team, currentSimulation.teams);

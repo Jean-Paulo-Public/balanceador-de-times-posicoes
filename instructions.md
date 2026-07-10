@@ -8,7 +8,7 @@ src/
 ├── store/           # Zustand: usePlayerStore.ts, migration.ts (migra dados antigos)
 ├── features/
 │   ├── players/         # PlayerForm.tsx, PlayerCard.tsx, PlayersTab.tsx, importExport.ts
-│   └── simulation/      # SimulationTab.tsx, FieldMap.tsx
+│   └── simulation/      # SimulationTab.tsx, FieldMap.tsx, TeamRosterList.tsx, rosterText.ts
 ├── components/       # UI genérica (StarRating.tsx)
 ├── App.tsx / main.tsx
 ```
@@ -50,6 +50,23 @@ um esquema de "buckets" com prioridade rígida (nativo > forçado > fallback com
 O rótulo exibido quando o pivô joga de Atacante passa a ser "Atacante (pivô)" em vez de "Atacante
 (improvisado)" (`getRoleLabels`, parâmetro `isPivotFit`).
 
+`Player.pivotFriendly` também vale pra Atacante, com efeito OPOSTO ao do Meia: um Atacante marcado
+como pivô é a referência de área do time (bola aérea, jogo de costas pro gol) e tem preferência pra
+NÃO ser recuado como Meia quando o time precisa improvisar alguém pra trás. Diferente do caso do
+Meia (que tem um bucket de prioridade dura, `forcePivotForAtacante`), essa preferência é só uma
+penalidade pequena e simétrica (`PIVOT_AVOID_MEIA_PENALTY = -0.4` em `improvisation.ts`, dentro de
+`getImprovisationBonus`) — de propósito, porque o pedido original foi "preferência, desde que não
+custe muito overall": se a diferença de nível pro resto do time for grande o bastante, o pivô ainda
+pode acabar recuando mesmo assim (ver teste 2 em `atacantePivotAvoidance.test.ts`). Um Atacante SEM
+essa marcação é tratado como um "segundo atacante" mais móvel, que recua com mais naturalidade.
+
+Essa mesma marcação também afeta a tela de simulação: no `FieldMap.tsx`, um Atacante escalado
+(`roleShort === 'ATA'`) sem `pivotFriendly` é desenhado alguns pixels mais atrás dentro da própria
+linha de ataque (classe `.secondStriker` em `FieldMap.module.css`), pra deixar claro visualmente que
+ele não é a referência de área pra bola aérea, e sim alguém que vem de trás pra finalizar. O
+cadastro do jogador (`PlayerForm.tsx`) mostra o checkbox de pivô tanto pra Meia quanto pra Atacante,
+com label e texto de ajuda específicos pra cada posição.
+
 Um jogador nunca é escalado como Goleiro e como Defensor ao mesmo tempo (ou é um, ou é outro): quem
 vira goleiro sai do pool de jogadores de linha daquela simulação. Quando um time não tem goleiro
 nativo escalado (`hasGkCoverage` retorna falso — nem goleiro titular, nem ninguém isGoalkeeper na
@@ -80,6 +97,26 @@ As "Observações do Time" (pontos de atenção exibidos na tela de simulação)
 `generateTeamObservations()` em `src/engine/observations.ts`, a partir do `Team` já montado — é
 puramente diagnóstico/texto, não influencia o balanceamento em si. Novas heurísticas de observação
 devem ser adicionadas ali, e exibidas em `SimulationTab.tsx` (bloco "Observações do Time").
+
+**Filtro de cenários duplicados.** No fim de cada iteração de `generateTeams()`, antes do `push` em
+`results`, é calculada uma "assinatura" da escalação (quem joga em cada função — GK/DEF/MEI/ATA — em
+cada time, mais quem ficou no banco) e guardada num `Set` (`seenSignatures`); se a assinatura já
+apareceu antes, a simulação é descartada (`continue`). Isso evita que a tela mostre vários cenários
+que são, na prática, a mesma escalação (mesmos jogadores nas mesmas funções). A assinatura agrupa por
+`roleShort` (GK/DEF/MEI/ATA), não pelo `assignedRole` (id da vaga específica, tipo "Meia 1" vs "Meia
+2") — dois cenários com os mesmos 4 Meias só trocados de vaga entre si contam como o MESMO cenário
+pra quem olha a lista de jogadores. Teste de regressão em `src/engine/dedupeScenarios.test.ts`.
+
+**Lista dos times e export pro WhatsApp.** `src/features/simulation/rosterText.ts` centraliza o
+agrupamento dos jogadores de um `Team` em seções (Goleiro/Defensores/Meias/Atacantes/Banco,
+pulando as vazias) e a montagem do texto pronto pra compartilhar (`buildRosterText`, com `*Time X*`
+em negrito e "- " como marcador de item — de propósito, sem "*" isolado antes do nome, que o
+WhatsApp poderia interpretar como início de negrito). Esse mesmo agrupamento alimenta o componente
+visual `TeamRosterList.tsx`, exibido no topo dos resultados em `SimulationTab.tsx`, e o botão
+"Exportar para WhatsApp" (abre `https://wa.me/?text=...` numa nova aba — o WhatsApp que fica
+responsável por deixar o usuário escolher o destinatário, o app não guarda nem sugere nenhum
+contato). Se um novo agrupamento/seção for necessário no futuro, adicione em `rosterText.ts` pra
+manter a tela e o export sempre iguais.
 
 Sempre que adicionar um cenário de teste novo, use os geradores de elenco em
 `src/engine/testFixtures.ts` como base.

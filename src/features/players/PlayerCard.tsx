@@ -38,7 +38,11 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
           <span className={`${styles.name} ${!player.active ? styles.nameStrike : ''}`}>{player.name}</span>
           {player.isCaptain && <span title="Capitão">👑</span>}
           {player.isGoalkeeper && <span title="Goleiro (Emergência)"><ShieldAlert size={16} color="var(--color-info)" /></span>}
-          {player.pivotFriendly && <span title="Facilidade em ser pivô"><Target size={15} color="var(--color-accent)" /></span>}
+          {player.pivotFriendly && (
+            <span title={player.position === 'ATACANTE' ? 'Pivô de referência (fica na área)' : 'Facilidade em ser pivô'}>
+              <Target size={15} color="var(--color-accent)" />
+            </span>
+          )}
         </div>
 
         <div className={styles.metaRow}>
