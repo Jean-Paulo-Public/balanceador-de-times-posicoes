@@ -6,19 +6,24 @@ interface StarRatingProps {
   value: number;
   onChange?: (value: number) => void;
   readOnly?: boolean;
+  /** Tamanho do ícone da estrela (px). Padrão 24. */
+  size?: number;
 }
 
-export function StarRating({ label, value, onChange, readOnly = false }: StarRatingProps) {
+/** Escala de 0 a 5 estrelas, em passos de meia estrela. */
+const STARS = [1, 2, 3, 4, 5];
+
+export function StarRating({ label, value, onChange, readOnly = false, size = 24 }: StarRatingProps) {
   return (
     <div className={styles.wrapper}>
       {label && (
         <div className={styles.header}>
           <label className={styles.label}>{label}</label>
-          <span className={styles.value}>{value}/6</span>
+          <span className={styles.value}>{value}/5</span>
         </div>
       )}
       <div className={styles.stars}>
-        {[1, 2, 3, 4, 5, 6].map((star) => {
+        {STARS.map((star) => {
           const isFull = value >= star;
           const isHalf = value === star - 0.5;
           const isActive = value >= star - 0.5;
@@ -27,10 +32,10 @@ export function StarRating({ label, value, onChange, readOnly = false }: StarRat
             <div key={star} className={styles.starSlot}>
               <div className={styles.starIcon}>
                 {isHalf ? (
-                  <StarHalf size={24} fill="var(--color-accent)" color="var(--color-accent)" />
+                  <StarHalf size={size} fill="var(--color-accent)" color="var(--color-accent)" />
                 ) : (
                   <Star
-                    size={24}
+                    size={size}
                     fill={isFull ? 'var(--color-accent)' : 'transparent'}
                     color={isActive ? 'var(--color-accent)' : 'var(--star-inactive)'}
                   />
@@ -55,7 +60,7 @@ export function StarRating({ label, value, onChange, readOnly = false }: StarRat
       </div>
       {!readOnly && (
         <div className={styles.hint}>
-          Toque no lado esquerdo da estrela para meia (0.5), ou no lado direito para inteira.
+          Toque no lado esquerdo da estrela para meia (0,5), ou no lado direito para inteira.
         </div>
       )}
     </div>

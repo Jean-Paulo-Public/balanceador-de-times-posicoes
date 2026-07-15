@@ -1,60 +1,56 @@
 import type { Player, Position } from '../domain/types';
-import { createStats } from '../domain/playerAttributes';
+import { clampRating } from '../domain/playerAttributes';
 
 /**
  * Roster de teste "de brincadeira": jogadores reais e conhecidos do futebol
  * mundial, só para dar um clima mais divertido a quem está testando o app
  * (não é uma avaliação real de habilidade de ninguém, é só um easter egg).
- *
- * `recomposicao` baixa é usada de propósito em alguns craques mais "de show"
- * para ilustrar o atributo geral_recomposicaoDefensiva — combina com o
- * conceito de "não corre atrás da jogada".
  */
 interface FunPlayerSeed {
   name: string;
   position: Position;
-  level: number;
+  /** Estrela na escala nova (0–5). */
+  rating: number;
   isGoalkeeper?: boolean;
-  recomposicao?: number;
-  /** Só relevante para Meias — ver `Player.pivotFriendly`. */
   pivotFriendly?: boolean;
+  recompoePouco?: boolean;
 }
 
 const FUN_ROSTER_SEED: FunPlayerSeed[] = [
-  // Goleiros
-  { name: 'Alisson Becker', position: 'DEFENSOR', level: 6, isGoalkeeper: true },
-  { name: 'Ederson', position: 'DEFENSOR', level: 5, isGoalkeeper: true },
-  { name: 'Manuel Neuer', position: 'DEFENSOR', level: 6, isGoalkeeper: true },
-  { name: 'Thibaut Courtois', position: 'DEFENSOR', level: 5, isGoalkeeper: true },
-  { name: 'Ter Stegen', position: 'DEFENSOR', level: 5, isGoalkeeper: true },
+  // Goleiros (posição de origem Defensor; entram no gol quando reservados)
+  { name: 'Alisson Becker', position: 'DEFENSOR', rating: 5, isGoalkeeper: true },
+  { name: 'Ederson', position: 'DEFENSOR', rating: 4.5, isGoalkeeper: true },
+  { name: 'Manuel Neuer', position: 'DEFENSOR', rating: 5, isGoalkeeper: true },
+  { name: 'Thibaut Courtois', position: 'DEFENSOR', rating: 4.5, isGoalkeeper: true },
+  { name: 'Ter Stegen', position: 'DEFENSOR', rating: 4.5, isGoalkeeper: true },
 
   // Defensores
-  { name: 'Virgil van Dijk', position: 'DEFENSOR', level: 6, recomposicao: 6 },
-  { name: 'Marquinhos', position: 'DEFENSOR', level: 5, recomposicao: 5 },
-  { name: 'Éder Militão', position: 'DEFENSOR', level: 4, recomposicao: 5 },
-  { name: 'Thiago Silva', position: 'DEFENSOR', level: 5, recomposicao: 5 },
-  { name: 'David Alaba', position: 'DEFENSOR', level: 4 },
-  { name: 'Sergio Ramos', position: 'DEFENSOR', level: 5 },
+  { name: 'Virgil van Dijk', position: 'DEFENSOR', rating: 5 },
+  { name: 'Marquinhos', position: 'DEFENSOR', rating: 4.5 },
+  { name: 'Éder Militão', position: 'DEFENSOR', rating: 4 },
+  { name: 'Thiago Silva', position: 'DEFENSOR', rating: 4.5 },
+  { name: 'David Alaba', position: 'DEFENSOR', rating: 4 },
+  { name: 'Sergio Ramos', position: 'DEFENSOR', rating: 4.5 },
 
   // Meias
-  { name: 'Kevin De Bruyne', position: 'MEIA', level: 6 },
-  { name: 'Luka Modrić', position: 'MEIA', level: 6 },
-  { name: 'Toni Kroos', position: 'MEIA', level: 5 },
-  { name: 'Casemiro', position: 'MEIA', level: 5, recomposicao: 6 },
-  { name: 'Pedri', position: 'MEIA', level: 4 },
-  { name: 'Jude Bellingham', position: 'MEIA', level: 5, pivotFriendly: true },
-  { name: 'Kaká', position: 'MEIA', level: 5, recomposicao: 2, pivotFriendly: true },
-  { name: 'Zinédine Zidane', position: 'MEIA', level: 6, recomposicao: 2 },
+  { name: 'Kevin De Bruyne', position: 'MEIA', rating: 5 },
+  { name: 'Luka Modrić', position: 'MEIA', rating: 5 },
+  { name: 'Toni Kroos', position: 'MEIA', rating: 4.5 },
+  { name: 'Casemiro', position: 'MEIA', rating: 4.5 },
+  { name: 'Pedri', position: 'MEIA', rating: 4 },
+  { name: 'Jude Bellingham', position: 'MEIA', rating: 4.5, pivotFriendly: true },
+  { name: 'Kaká', position: 'MEIA', rating: 4.5, pivotFriendly: true, recompoePouco: true },
+  { name: 'Zinédine Zidane', position: 'MEIA', rating: 5, recompoePouco: true },
 
   // Atacantes
-  { name: 'Erling Haaland', position: 'ATACANTE', level: 6 },
-  { name: 'Kylian Mbappé', position: 'ATACANTE', level: 6 },
-  { name: 'Lionel Messi', position: 'ATACANTE', level: 6, recomposicao: 2 },
-  { name: 'Cristiano Ronaldo', position: 'ATACANTE', level: 6, recomposicao: 3 },
-  { name: 'Vinícius Jr.', position: 'ATACANTE', level: 5 },
-  { name: 'Karim Benzema', position: 'ATACANTE', level: 5, recomposicao: 3 },
-  { name: 'Neymar Jr.', position: 'ATACANTE', level: 5, recomposicao: 2 },
-  { name: 'Ronaldinho Gaúcho', position: 'ATACANTE', level: 5, recomposicao: 1 },
+  { name: 'Erling Haaland', position: 'ATACANTE', rating: 5 },
+  { name: 'Kylian Mbappé', position: 'ATACANTE', rating: 5 },
+  { name: 'Lionel Messi', position: 'ATACANTE', rating: 5, recompoePouco: true },
+  { name: 'Cristiano Ronaldo', position: 'ATACANTE', rating: 5 },
+  { name: 'Vinícius Jr.', position: 'ATACANTE', rating: 4.5 },
+  { name: 'Karim Benzema', position: 'ATACANTE', rating: 4.5 },
+  { name: 'Neymar Jr.', position: 'ATACANTE', rating: 4.5, recompoePouco: true },
+  { name: 'Ronaldinho Gaúcho', position: 'ATACANTE', rating: 4.5, recompoePouco: true },
 ];
 
 export const buildFunRoster = (): Player[] =>
@@ -65,9 +61,7 @@ export const buildFunRoster = (): Player[] =>
     isCaptain: false,
     isGoalkeeper: seed.isGoalkeeper ?? false,
     position: seed.position,
-    stats: {
-      ...createStats(seed.level),
-      ...(seed.recomposicao !== undefined ? { geral_recomposicaoDefensiva: seed.recomposicao } : {}),
-    },
+    rating: clampRating(seed.rating),
     pivotFriendly: seed.pivotFriendly ?? false,
+    recompoePouco: seed.recompoePouco ?? false,
   }));

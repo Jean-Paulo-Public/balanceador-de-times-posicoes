@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Player } from '../domain/types';
-import { normalizeStats } from '../domain/playerAttributes';
-import { migratePlayers } from './migration';
+import { clampRating } from '../domain/playerAttributes';
+import { normalizePlayers, normalizePlayer } from './migration';
 import { buildFunRoster } from './funRoster';
 
 interface PlayerState {
@@ -21,7 +21,7 @@ interface PlayerState {
   generateTestRoster: () => void;
 }
 
-const CURRENT_STORAGE_VERSION = 2;
+const CURRENT_STORAGE_VERSION = 4;
 
 export const usePlayerStore = create<PlayerState>()(
   persist(
@@ -33,12 +33,14 @@ export const usePlayerStore = create<PlayerState>()(
       maxSixLinePlayers: false,
       addPlayer: (player) =>
         set((state) => ({
-          players: [...state.players, { ...player, id: crypto.randomUUID(), stats: normalizeStats(player.stats) }],
+          players: [...state.players, { ...player, id: crypto.randomUUID(), rating: clampRating(player.rating) }],
         })),
       updatePlayer: (id, updatedFields) =>
         set((state) => ({
           players: state.players.map((p) =>
-            p.id === id ? { ...p, ...updatedFields, stats: normalizeStats({ ...p.stats, ...updatedFields.stats }) } : p
+            p.id === id
+              ? { ...p, ...updatedFields, rating: clampRating(updatedFields.rating ?? p.rating) }
+              : p
           ),
         })),
       deletePlayer: (id) =>
@@ -54,7 +56,7 @@ export const usePlayerStore = create<PlayerState>()(
       setNeverScaleGoalkeepers: (value) => set(() => ({ neverScaleGoalkeepers: value })),
       setGenerateTestPlayersOnEmpty: (value) => set(() => ({ generateTestPlayersOnEmpty: value })),
       setMaxSixLinePlayers: (value) => set(() => ({ maxSixLinePlayers: value })),
-      setPlayers: (players) => set(() => ({ players: players.map(p => ({ ...p, stats: normalizeStats(p.stats) })) })),
+      setPlayers: (players) => set(() => ({ players: normalizePlayers(players) })),
       generateTestRoster: () => set(() => ({ players: buildFunRoster() })),
     }),
     {
@@ -63,7 +65,7 @@ export const usePlayerStore = create<PlayerState>()(
       migrate: (persistedState, version) => {
         const state = persistedState as PlayerState;
         if (version < CURRENT_STORAGE_VERSION) {
-          return { ...state, players: migratePlayers(state.players) };
+          return { ...state, players: normalizePlayers(state.players) };
         }
         return state;
       },
@@ -73,7 +75,8 @@ export const usePlayerStore = create<PlayerState>()(
           state.players = buildFunRoster();
           return;
         }
-        state.players = (state.players ?? []).map((p) => ({ ...p, stats: normalizeStats(p.stats) }));
+        // Garante que todo jogador está no shape novo (rating válido + flags).
+        state.players = (state.players ?? []).map((p) => normalizePlayer(p));
       },
     }
   )

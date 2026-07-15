@@ -388,3 +388,22 @@
   color: var(--color-text-muted);
   margin-top: var(--space-8);
 }
+
+.proposalBlock {
+  margin-top: var(--space-5);
+  padding-top: var(--space-3);
+  border-top: 2px dashed var(--color-border, rgba(255, 255, 255, 0.12));
+}
+
+.proposalHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-3);
+}
+
+.proposalTitle {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--color-primary);
+}

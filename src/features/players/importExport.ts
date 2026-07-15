@@ -1,5 +1,5 @@
 import type { Player, Position } from '../../domain/types';
-import { normalizeStats } from '../../domain/playerAttributes';
+import { clampRating, DEFAULT_RATING } from '../../domain/playerAttributes';
 
 const VALID_POSITIONS: Position[] = ['DEFENSOR', 'MEIA', 'ATACANTE'];
 const DEFAULT_FILE_NAME = 'jogadores-balanceador.json';
@@ -67,14 +67,14 @@ interface RawPlayerLike {
   isCaptain?: unknown;
   isGoalkeeper?: unknown;
   position?: unknown;
-  stats?: unknown;
+  rating?: unknown;
   pivotFriendly?: unknown;
+  recompoePouco?: unknown;
 }
 
 /**
  * Converte um JSON importado (array de jogadores, ou objeto { players: [...] })
- * em jogadores válidos. Sempre normaliza `stats`, preenchendo qualquer atributo
- * ausente com o valor padrão.
+ * em jogadores válidos no shape atual (estrela 0–5 + flags).
  */
 export const parseImportedPlayers = (rawText: string): Player[] => {
   const parsed = JSON.parse(rawText) as unknown;
@@ -97,8 +97,9 @@ export const parseImportedPlayers = (rawText: string): Player[] => {
       isCaptain: typeof raw.isCaptain === 'boolean' ? raw.isCaptain : false,
       isGoalkeeper: typeof raw.isGoalkeeper === 'boolean' ? raw.isGoalkeeper : false,
       position: isValidPosition(raw.position) ? raw.position : 'MEIA',
-      stats: normalizeStats(raw.stats as Player['stats'] | undefined),
+      rating: typeof raw.rating === 'number' ? clampRating(raw.rating) : DEFAULT_RATING,
       pivotFriendly: typeof raw.pivotFriendly === 'boolean' ? raw.pivotFriendly : false,
+      recompoePouco: typeof raw.recompoePouco === 'boolean' ? raw.recompoePouco : false,
     };
   });
 };

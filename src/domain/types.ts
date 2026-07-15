@@ -1,93 +1,54 @@
 // Modelo de domínio do Balanceador de Times.
-// Qualquer novo atributo de jogador deve ser adicionado em `PlayerStats` E em
-// `src/domain/playerAttributes.ts` (metadados usados pelo formulário e pela migração).
+//
+// Modelo simplificado: cada jogador tem uma posição de origem (Defensor/Meia/
+// Atacante) e UMA nota em estrelas (0 a 5, de meio em meio). A qualidade
+// defensiva/ofensiva do jogador é embutida pelo próprio usuário na estrela.
+// Duas marcações booleanas ajudam a decidir QUEM improvisa no ataque quando um
+// time fica sem atacante de origem: `pivotFriendly` (facilidade de ser pivô) e
+// `recompoePouco` (não recompõe / perfil mais ofensivo).
 
 export type Position = 'DEFENSOR' | 'MEIA' | 'ATACANTE';
-
-export interface PlayerStats {
-  // --- Defensor ---
-  // Principais (defesa)
-  def_marcacaoPosicionamento?: number;
-  def_interceptacaoDesarme?: number;
-  def_jogoAereoCobertura?: number;
-  // Secundários (construção / improviso como Meia)
-  def_saidaBolaPasse?: number;
-  def_protecaoDeBola?: number;
-  def_apoioConstrucao?: number;
-
-  // --- Meia ---
-  // Defensivos
-  meia_marcacaoPosicionamento?: number;
-  meia_interceptacaoDesarme?: number;
-  meia_saidaDePressao?: number;
-  // Ofensivos
-  meia_visaoPasse?: number;
-  meia_dribleArrancada?: number;
-  meia_finalizacao?: number;
-
-  // --- Atacante ---
-  // Principais (ataque)
-  ata_finalizacao?: number;
-  ata_dribleArrancada?: number;
-  ata_passeGolTabela?: number;
-  // Secundários (recomposição / improviso como Meia)
-  ata_pressaoRecomposicao?: number;
-  ata_desarmeMarcacao?: number;
-  ata_protecaoBolaPivo?: number;
-
-  // Atributo geral, comum a todas as posições. Peso alto na média geral e no
-  // cálculo de equilíbrio defensivo — pensado para jogadores mais velhos ou
-  // com pouco compromisso tático (recompõem menos, cansam mais rápido).
-  geral_recomposicaoDefensiva?: number;
-
-  // Atributos de Goleiro (usados quando isGoalkeeper = true, independente da posição principal)
-  gk_posicionamentoSaida?: number;
-  gk_defesaReflexo?: number;
-  gk_posicionamentoAereo?: number;
-  gk_saidaPrecisa?: number;
-}
 
 export interface Player {
   id: string;
   name: string;
   active: boolean;
   isCaptain: boolean;
+  /** Consegue jogar no gol (emergência). Um goleiro por time pode ser reservado. */
   isGoalkeeper: boolean;
   position: Position;
-  stats: PlayerStats;
-  /**
-   * Indica facilidade/perfil de jogar como pivô (referência ofensiva de costas
-   * pro gol). Relevante em duas posições, com efeito oposto no improviso:
-   * - Meia: prioriza esse jogador em improvisos como Atacante, em vez de outro
-   *   Meia qualquer — desde que a diferença de nível não seja grande.
-   * - Atacante: indica que ele É a referência de área do time (bola aérea,
-   *   jogo de costas pro gol), então tem preferência para NÃO ser recuado como
-   *   Meia quando o time precisa improvisar alguém pra trás — desde que isso
-   *   não custe muito overall. Um Atacante sem essa marcação é tratado como um
-   *   segundo atacante mais móvel, que pode recuar com mais naturalidade.
-   * Ver getImprovisationBonus (src/engine/improvisation.ts).
-   */
+  /** Nota única do jogador, de 0 a 5, em passos de 0,5. */
+  rating: number;
+  /** Facilidade em ser pivô — prioridade pra virar atacante improvisado. */
   pivotFriendly: boolean;
+  /** Recompõe pouco (perfil mais ofensivo) — 2ª prioridade pra virar atacante improvisado. */
+  recompoePouco: boolean;
 }
 
-/** Sistemas táticos suportados. QUALQUER sorteia um dos três a cada simulação. */
-export type FormationType = 'OFENSIVA' | 'EQUILIBRADA' | 'DEFENSIVA' | 'QUALQUER';
+/** Sistemas táticos suportados (usados só como rótulo do arranjo de campo). */
+export type FormationType = 'OFENSIVA' | 'EQUILIBRADA' | 'DEFENSIVA';
 
 export interface TeamSlotPlayer {
   player: Player;
+  /** Id da vaga (ex.: "Defensor 1", "Meia 2", "Goleiro"). */
   assignedRole: string;
-  improvisationPenalty: number;
+  /** Nota usada para exibição/ordenação — é o próprio rating do jogador. */
   roleScore: number;
   roleLabel?: string;
+  /** GK | DEF | MEI | ATA */
   roleShort?: string;
+  /** Meia/atacante empurrado pra outra função por falta de gente de origem. */
+  improvised?: boolean;
 }
 
 export interface Team {
   id: number;
   name: string;
+  /** Média das estrelas dos jogadores do time (0 a 5). */
   overall: number;
+  /** Média das estrelas do banco (0 a 5), se houver reservas. */
   benchOverall?: number;
-  defensiveOverall: number;
+  /** Rótulo do sistema tático escolhido pelo arranjo (ex.: "OFENSIVA"). */
   tacticalSystem?: string;
   players: TeamSlotPlayer[];
   bench: TeamSlotPlayer[];
@@ -95,10 +56,9 @@ export interface Team {
 
 export interface SimulationResult {
   id: string;
+  /** Título da proposta (ex.: "Proposta 1"), quando exibida numa lista de propostas. */
+  title?: string;
   teams: Team[];
-  scoreDeviation: number;
-  totalImprov: number;
+  /** Variância das médias de estrela entre os times — quanto menor, mais equilibrado. */
   equilibrium: number;
-  defensiveEquilibrium: number;
-  benchToTitularDiff: number;
 }

@@ -57,10 +57,34 @@
   color: #04170a;
 }
 
+.badgeStars {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.badgeStarsValue {
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.teamBlockBody {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.sectionsColumn {
+  flex: 1 1 auto;
+  min-width: 110px;
+}
+
 .compactFieldWrapper {
+  flex: 0 0 auto;
   display: flex;
   justify-content: center;
-  margin-bottom: var(--space-3);
 }
 
 .section {

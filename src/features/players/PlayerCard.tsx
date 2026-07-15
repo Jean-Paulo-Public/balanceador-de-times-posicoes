@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import type { Player } from '../../domain/types';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { posToLabel } from '../../domain/playerAttributes';
-import { scoreNativePosition, scoreMeiaRole, scoreDefensorRole, scoreAtacanteRole } from '../../engine/scoring';
-import { Shield, Users, Swords, Edit, Trash2, ShieldAlert, Target } from 'lucide-react';
+import { StarRating } from '../../components/StarRating';
+import { Shield, Users, Swords, Edit, Trash2, ShieldAlert, Target, BatteryLow } from 'lucide-react';
 import styles from './PlayerCard.module.css';
 
 interface PlayerCardProps {
@@ -17,17 +17,9 @@ const POSITION_VISUAL: Record<Player['position'], { icon: ReactNode; color: stri
   ATACANTE: { icon: <Swords size={15} />, color: 'var(--color-accent)', chip: 'chip-accent' },
 };
 
-const toOverall = (val: number) => Math.round((val / 6) * 100);
-
 export function PlayerCard({ player, onEdit }: PlayerCardProps) {
   const { togglePlayerActive, deletePlayer } = usePlayerStore();
   const visual = POSITION_VISUAL[player.position];
-
-  const mainOverall = toOverall(scoreNativePosition(player));
-  const secondaryLabel = player.position === 'MEIA' ? 'Versatilidade' : 'Improviso (Meia)';
-  const secondaryOverall = player.position === 'MEIA'
-    ? toOverall((scoreDefensorRole(player) + scoreAtacanteRole(player)) / 2)
-    : toOverall(scoreMeiaRole(player));
 
   return (
     <div className={`${styles.card} animate-fade-in`}>
@@ -38,11 +30,8 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
           <span className={`${styles.name} ${!player.active ? styles.nameStrike : ''}`}>{player.name}</span>
           {player.isCaptain && <span title="Capitão">👑</span>}
           {player.isGoalkeeper && <span title="Goleiro (Emergência)"><ShieldAlert size={16} color="var(--color-info)" /></span>}
-          {player.pivotFriendly && (
-            <span title={player.position === 'ATACANTE' ? 'Pivô de referência (fica na área)' : 'Facilidade em ser pivô'}>
-              <Target size={15} color="var(--color-accent)" />
-            </span>
-          )}
+          {player.pivotFriendly && <span title="Facilidade em ser pivô"><Target size={15} color="var(--color-accent)" /></span>}
+          {player.recompoePouco && <span title="Recompõe pouco"><BatteryLow size={15} color="var(--color-danger)" /></span>}
         </div>
 
         <div className={styles.metaRow}>
@@ -51,18 +40,8 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
         </div>
 
         <div className={styles.overalls}>
-          <div className={styles.overallBox}>
-            <div className={styles.overallLabel}>OVR Principal</div>
-            <div className={styles.overallValue} style={{ color: mainOverall >= 80 ? 'var(--color-primary)' : mainOverall >= 60 ? 'var(--color-accent)' : 'var(--color-text)' }}>
-              {mainOverall}
-            </div>
-          </div>
-          <div className={styles.overallBox}>
-            <div className={styles.overallLabel}>{secondaryLabel}</div>
-            <div className={styles.overallValue} style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-              {secondaryOverall}
-            </div>
-          </div>
+          <StarRating label="" value={player.rating} readOnly size={18} />
+          <span className={styles.overallLabel} style={{ marginLeft: '8px' }}>{player.rating}/5</span>
         </div>
       </div>
 

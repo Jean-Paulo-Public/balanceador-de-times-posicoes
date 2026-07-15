@@ -1,49 +1,41 @@
-import type { Player } from './types';
-import { scoreDefensorRole, scoreMeiaRole, scoreAtacanteRole } from '../engine/scoring';
-
-export type RoleFamily = 'DEFENSOR' | 'MEIA' | 'ATACANTE';
-
-export type FormationSlot = {
-  id: string;
-  family: RoleFamily;
-  allowedOriginalPositions: Player['position'][];
-  calcScore: (p: Player) => number;
-};
-
-const defensorSlot = (id: string): FormationSlot => ({
-  id, family: 'DEFENSOR', allowedOriginalPositions: ['DEFENSOR'], calcScore: scoreDefensorRole,
-});
-const meiaSlot = (id: string): FormationSlot => ({
-  id, family: 'MEIA', allowedOriginalPositions: ['MEIA'], calcScore: scoreMeiaRole,
-});
-const atacanteSlot = (id: string): FormationSlot => ({
-  id, family: 'ATACANTE', allowedOriginalPositions: ['ATACANTE'], calcScore: scoreAtacanteRole,
-});
+import type { FormationType } from './types';
 
 /**
- * Três sistemas táticos, cada um com exatamente 6 vagas de linha (fora o goleiro).
- * OFENSIVA = 2-2-2, EQUILIBRADA = 1-4-1, DEFENSIVA = 2-3-1.
+ * Layout de um sistema tático em quantidade de vagas por setor (fora o goleiro).
+ * Os três somam 6 jogadores de linha.
  */
-export const Formations: Record<'OFENSIVA' | 'EQUILIBRADA' | 'DEFENSIVA', FormationSlot[]> = {
-  OFENSIVA: [
-    defensorSlot('Defensor 1'), defensorSlot('Defensor 2'),
-    meiaSlot('Meia 1'), meiaSlot('Meia 2'),
-    atacanteSlot('Atacante 1'), atacanteSlot('Atacante 2'),
-  ],
-  EQUILIBRADA: [
-    defensorSlot('Defensor'),
-    meiaSlot('Meia 1'), meiaSlot('Meia 2'), meiaSlot('Meia 3'), meiaSlot('Meia 4'),
-    atacanteSlot('Atacante'),
-  ],
-  DEFENSIVA: [
-    defensorSlot('Defensor 1'), defensorSlot('Defensor 2'),
-    meiaSlot('Meia 1'), meiaSlot('Meia 2'), meiaSlot('Meia 3'),
-    atacanteSlot('Atacante'),
-  ],
+export interface FormationLayout {
+  def: number;
+  mei: number;
+  ata: number;
+}
+
+export const FORMATIONS: Record<FormationType, FormationLayout> = {
+  OFENSIVA: { def: 2, mei: 2, ata: 2 }, // 2-2-2
+  DEFENSIVA: { def: 2, mei: 3, ata: 1 }, // 2-3-1
+  EQUILIBRADA: { def: 1, mei: 4, ata: 1 }, // 1-4-1
 };
 
-export const FORMATION_LABELS: Record<keyof typeof Formations, string> = {
+export const FORMATION_LABELS: Record<FormationType, string> = {
   OFENSIVA: 'Ofensiva (2-2-2)',
   EQUILIBRADA: 'Equilibrada (1-4-1)',
   DEFENSIVA: 'Defensiva (2-3-1)',
+};
+
+/**
+ * Escolhe a formação que melhor encaixa nas contagens reais de defensores e
+ * atacantes de um time, seguindo a regra pedida:
+ *  - 2+ defensores e 2+ atacantes  -> 2-2-2 (OFENSIVA)
+ *  - 2+ defensores e <2 atacantes  -> 2-3-1 (DEFENSIVA)
+ *  - <2 defensores (qualquer nº de atacantes) -> 1-4-1 (EQUILIBRADA)
+ *
+ * O último caso cobre também "<2 defensores e 2+ atacantes": como nenhuma das
+ * três formações tem mais de 2 vagas de ataque e todas precisam de pelo menos
+ * 1 defensor, com menos de 2 zagueiros a linha de trás fica com 1 e os
+ * atacantes excedentes escorregam pro meio (os melhores ficam no ataque).
+ */
+export const chooseFormation = (numDefenders: number, numAttackers: number): FormationType => {
+  if (numDefenders >= 2 && numAttackers >= 2) return 'OFENSIVA';
+  if (numDefenders >= 2) return 'DEFENSIVA';
+  return 'EQUILIBRADA';
 };

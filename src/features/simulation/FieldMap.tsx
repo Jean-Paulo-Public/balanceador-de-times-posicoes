@@ -3,6 +3,8 @@ import styles from './FieldMap.module.css';
 
 interface FieldMapProps {
   playersList: TeamSlotPlayer[];
+  /** Reservas — desenhadas abaixo do goleiro, fora do campo. */
+  bench?: TeamSlotPlayer[];
   /** Versão menor (usada como referência dentro da Lista de Times) — mesmo
    * desenho, só com o wrapper mais estreito e os chips menores, sem legenda. */
   compact?: boolean;
@@ -16,7 +18,11 @@ const ROWS: { area: string; isGK: boolean }[] = [
   { area: 'GK', isGK: true },
 ];
 
-export function FieldMap({ playersList, compact = false }: FieldMapProps) {
+/** Recuo geral (linha de ataque, meio e defesa — nunca o goleiro), pra não
+ * deixar o time com cara de "muito avançado" no campinho. */
+const LINE_BACK_OFFSET = 6;
+
+export function FieldMap({ playersList, bench = [], compact = false }: FieldMapProps) {
   const hasGoalkeeper = playersList.some(p => p.roleShort === 'GK');
   const rows = ROWS.filter(r => !r.isGK || hasGoalkeeper);
 
@@ -33,14 +39,12 @@ export function FieldMap({ playersList, compact = false }: FieldMapProps) {
             <div key={row.area} className={styles.row}>
               {playersInRow.length > 0 ? (
                 playersInRow.map((p, idx) => {
-                  // Atacante que não é "pivô de referência" fica alguns pixels mais atrás
-                  // dentro da própria linha de ataque: evidencia que ele não é a referência
-                  // de área pra bola aérea, e sim um segundo atacante que vem de trás pra finalizar.
-                  const isNonPivotAtacante = row.area === 'ATA' && !p.player.pivotFriendly;
+                  const offsetY = row.isGK ? 0 : LINE_BACK_OFFSET;
                   return (
                     <span
                       key={idx}
-                      className={`${styles.playerChip} ${compact ? styles.playerChipCompact : ''} ${row.isGK ? styles.gkChip : ''} ${isNonPivotAtacante ? styles.secondStriker : ''}`}
+                      className={`${styles.playerChip} ${compact ? styles.playerChipCompact : ''} ${row.isGK ? styles.gkChip : ''}`}
+                      style={offsetY ? { transform: `translateY(${offsetY}px)` } : undefined}
                       title={p.player.name}
                     >
                       {p.player.name}
@@ -54,6 +58,23 @@ export function FieldMap({ playersList, compact = false }: FieldMapProps) {
           );
         })}
       </div>
+
+      {bench.length > 0 && (
+        <div className={`${styles.benchArea} ${compact ? styles.benchAreaCompact : ''}`}>
+          <span className={styles.benchLabel}>Banco</span>
+          <div className={styles.benchChips}>
+            {bench.map((p, idx) => (
+              <span
+                key={idx}
+                className={`${styles.benchChip} ${compact ? styles.benchChipCompact : ''}`}
+                title={p.player.name}
+              >
+                {p.player.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

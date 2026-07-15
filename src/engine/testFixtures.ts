@@ -1,11 +1,11 @@
 import type { Player, Position } from '../domain/types';
-import { createStats } from '../domain/playerAttributes';
+import { clampRating } from '../domain/playerAttributes';
 
 let counter = 0;
 
 export const makePlayer = (
   position: Position,
-  level: number = 3,
+  rating: number = 3,
   overrides: Partial<Player> = {}
 ): Player => {
   counter += 1;
@@ -16,57 +16,61 @@ export const makePlayer = (
     isCaptain: false,
     isGoalkeeper: false,
     position,
-    stats: createStats(level),
+    rating: clampRating(rating),
     pivotFriendly: false,
+    recompoePouco: false,
     ...overrides,
   };
 };
 
-export const makeGoalkeeper = (level: number = 4, overrides: Partial<Player> = {}): Player =>
-  makePlayer('MEIA', level, { isGoalkeeper: true, ...overrides });
+export const makeGoalkeeper = (rating: number = 4, overrides: Partial<Player> = {}): Player =>
+  makePlayer('MEIA', rating, { isGoalkeeper: true, ...overrides });
 
-/** Pool fácil: bastante opção em todas as posições, níveis variados mas nunca escassos. */
+/** Nota variada mas dentro da escala 0–5. */
+const variedRating = (i: number): number => clampRating(1.5 + (i % 8) * 0.5);
+
+/** Pool fácil: bastante opção em todas as posições, notas variadas mas nunca escassas. */
 export const buildBalancedPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
-  for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper(3 + (i % 3)));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', 2 + (i % 4)));
-  for (let i = 0; i < numTeams * 5; i++) players.push(makePlayer('MEIA', 2 + (i % 4)));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', 2 + (i % 4)));
+  for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper(3 + (i % 3) * 0.5));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
+  for (let i = 0; i < numTeams * 5; i++) players.push(makePlayer('MEIA', variedRating(i)));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', variedRating(i)));
   return players;
 };
 
-/** Pool difícil: quase nenhum Defensor nativo — a defesa depende de Meias improvisados. */
+/** Pool difícil: quase nenhum Defensor de origem — o mínimo de 1 zagueiro por time vai ceder. */
 export const buildFewDefendersPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
   const nativeDefenders = Math.max(1, Math.ceil(numTeams / 2));
-  for (let i = 0; i < nativeDefenders; i++) players.push(makePlayer('DEFENSOR', 2 + (i % 5)));
-  for (let i = 0; i < numTeams * 7; i++) players.push(makePlayer('MEIA', 1 + (i % 6)));
-  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('ATACANTE', 2 + (i % 4)));
+  for (let i = 0; i < nativeDefenders; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
+  for (let i = 0; i < numTeams * 7; i++) players.push(makePlayer('MEIA', variedRating(i)));
+  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('ATACANTE', variedRating(i)));
   return players;
 };
 
-/** Pool difícil: nenhum (ou quase nenhum) Meia nativo — Defensor/Atacante têm que cobrir o meio. */
+/** Pool difícil: nenhum (ou quase nenhum) Meia de origem. */
 export const buildFewMeiasPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', 1 + (i % 6)));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', 1 + (i % 6)));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', variedRating(i)));
   return players;
 };
 
-/** Pool difícil: quase nenhum Atacante nativo. */
+/** Pool difícil: quase nenhum Atacante de origem. */
 export const buildFewAtacantesPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
   const nativeAttackers = Math.max(1, Math.ceil(numTeams / 2));
-  for (let i = 0; i < nativeAttackers; i++) players.push(makePlayer('ATACANTE', 2 + (i % 5)));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', 2 + (i % 4)));
-  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', 1 + (i % 6)));
+  for (let i = 0; i < nativeAttackers; i++) players.push(makePlayer('ATACANTE', variedRating(i)));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
+  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', variedRating(i)));
   return players;
 };
 
-/** Pool exatamente no limite: numTeams * 6, sem ninguém de sobra pro banco. */
+/** Pool exatamente no limite: após reservar goleiros, sobram exatamente 6 de linha por time. */
 export const buildMinimalPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
@@ -77,17 +81,30 @@ export const buildMinimalPool = (numTeams: number): Player[] => {
 };
 
 /**
- * Pool desnivelado: a qualidade defensiva está concentrada em poucos jogadores
- * (metade excelente, metade péssima), testando se o motor espalha bem esse
- * desnível entre os times em vez de empilhar os bons defensores em um só time.
+ * Pool desnivelado: a qualidade está concentrada em poucos jogadores (metade
+ * excelente, metade péssima), testando se o motor espalha bem esse desnível
+ * entre os times em vez de empilhar os melhores em um só time.
  */
-export const buildSkewedDefensePool = (numTeams: number): Player[] => {
+export const buildSkewedPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 6)); // elite
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 1)); // péssimos
-  for (let i = 0; i < numTeams * 5; i++) players.push(makePlayer('MEIA', 3));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', 3));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 5)); // elite
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 1)); // fracos
+  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('MEIA', 5));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('MEIA', 1));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('ATACANTE', 5));
+  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('ATACANTE', 1));
+  return players;
+};
+
+/** Pool sem nenhum atacante de origem: força o improviso de meia no ataque. */
+export const buildNoAttackerPool = (numTeams: number): Player[] => {
+  const players: Player[] = [];
+  for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
+  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('MEIA', 4, { pivotFriendly: true }));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('MEIA', 3.5, { recompoePouco: true }));
+  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', variedRating(i)));
   return players;
 };
 

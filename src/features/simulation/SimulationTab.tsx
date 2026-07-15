@@ -1,18 +1,13 @@
 import { useState } from 'react';
 import { usePlayerStore } from '../../store/usePlayerStore';
-import type { FormationType, SimulationResult } from '../../domain/types';
-import { FORMATION_LABELS } from '../../domain/formations';
-import { generateTeams } from '../../engine/generateTeams';
-import { generateTeamObservations } from '../../engine/observations';
-import { FieldMap } from './FieldMap';
+import type { SimulationResult } from '../../domain/types';
+import { generateProposals } from '../../engine/generateTeams';
 import { TeamRosterList } from './TeamRosterList';
 import { buildRosterText } from './rosterText';
-import { overallColor } from './overallColor';
 import { buildFieldMapsImage } from './fieldMapImage';
-import { Play, ChevronLeft, ChevronRight, AlertTriangle, ShieldAlert, Eye, MessageCircle, Image as ImageIcon } from 'lucide-react';
+import { Play, AlertTriangle, MessageCircle, Image as ImageIcon } from 'lucide-react';
 import styles from './SimulationTab.module.css';
 
-const MAX_TEAMS = 4;
 const suggestTeams = (activePlayersCount: number) => (activePlayersCount <= 17 ? 2 : 3);
 
 export function SimulationTab() {
@@ -21,9 +16,7 @@ export function SimulationTab() {
   const activePlayersCount = players.filter(p => p.active).length;
 
   const [desiredNumTeams, setDesiredNumTeams] = useState<number>(() => suggestTeams(activePlayersCount));
-  const [teamFormations, setTeamFormations] = useState<FormationType[]>(() => Array(MAX_TEAMS).fill('QUALQUER'));
-  const [results, setResults] = useState<SimulationResult[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [proposals, setProposals] = useState<SimulationResult[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasSimulated, setHasSimulated] = useState(false);
   const [isExportingImage, setIsExportingImage] = useState(false);
@@ -31,59 +24,47 @@ export function SimulationTab() {
   const maxFeasibleTeams = Math.max(1, Math.floor(activePlayersCount / 6));
   const numTeams = Math.min(desiredNumTeams, maxFeasibleTeams);
   const requiredPlayers = numTeams * 6;
-  const activeFormations = teamFormations.slice(0, numTeams);
 
   const handleSimulate = () => {
     setIsSimulating(true);
     setHasSimulated(true);
     setTimeout(() => {
-      const simResults = generateTeams(players, activeFormations, numTeams, 3000, neverScaleGoalkeepers, maxSixLinePlayers);
-      setResults(simResults);
-      setCurrentIndex(0);
+      const generated = generateProposals(players, numTeams, { neverScaleGoalkeepers, maxSixLinePlayers });
+      setProposals(generated);
       setIsSimulating(false);
     }, 100);
   };
 
-  const currentSimulation = results[currentIndex];
-  const isImbalanced = currentSimulation && (currentSimulation.equilibrium > 100 || currentSimulation.defensiveEquilibrium > 100);
-
   const handleExportWhatsApp = () => {
-    if (!currentSimulation) return;
-    const text = buildRosterText(currentSimulation.teams);
+    if (proposals.length === 0) return;
+    const text = proposals
+      .map(p => `*${p.title}*\n\n${buildRosterText(p.teams)}`)
+      .join('\n\n————————————\n\n');
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  /**
-   * Gera uma única imagem com os campinhos de todos os times lado a lado.
-   * Se o navegador suportar Web Share com arquivos (celulares, principalmente),
-   * abre o seletor nativo de compartilhamento — o WhatsApp aparece como uma das
-   * opções, igual anexar uma foto normalmente. Sem suporte (a maioria dos
-   * navegadores desktop), baixa o PNG pro usuário anexar manualmente — o
-   * campinho compacto na Lista de Times já fica disponível como referência
-   * visual de qualquer forma, com ou sem esse export.
-   */
   const handleExportFieldImage = async () => {
-    if (!currentSimulation || isExportingImage) return;
+    if (proposals.length === 0 || isExportingImage) return;
     setIsExportingImage(true);
     try {
-      const blob = await buildFieldMapsImage(currentSimulation.teams);
-      const file = new File([blob], 'campinhos-times.png', { type: 'image/png' });
+      const blob = await buildFieldMapsImage(proposals);
+      const file = new File([blob], 'propostas-times.png', { type: 'image/png' });
 
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Campinhos dos Times' });
+        await navigator.share({ files: [file], title: 'Propostas de Times' });
         return;
       }
 
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = 'campinhos-times.png';
+      anchor.download = 'propostas-times.png';
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
       if ((error as Error)?.name !== 'AbortError') {
-        console.error('Falha ao exportar os campinhos como imagem:', error);
+        console.error('Falha ao exportar as propostas como imagem:', error);
       }
     } finally {
       setIsExportingImage(false);
@@ -94,34 +75,12 @@ export function SimulationTab() {
     <div className="animate-fade-in">
       <div className="header-top">
         <h1>Simular Partidas</h1>
-        <p>Gere as equipes mais equilibradas, com foco na defesa</p>
+        <p>Três propostas equilibradas pelas estrelas dos jogadores</p>
       </div>
 
       <div style={{ padding: '20px' }}>
         <div className={`glass-panel ${styles.controlsPanel}`}>
           <div className={styles.controlsGrid}>
-            <div className={styles.formationsGroup}>
-              {activeFormations.map((teamFormation, index) => (
-                <div key={index} className={`input-group ${styles.formationField}`}>
-                  <label>Formação Time {index + 1}</label>
-                  <select
-                    className="input-field"
-                    value={teamFormation}
-                    onChange={(e) => setTeamFormations(prev => {
-                      const next = [...prev];
-                      next[index] = e.target.value as FormationType;
-                      return next;
-                    })}
-                  >
-                    <option value="QUALQUER">Qualquer uma</option>
-                    <option value="OFENSIVA">{FORMATION_LABELS.OFENSIVA}</option>
-                    <option value="EQUILIBRADA">{FORMATION_LABELS.EQUILIBRADA}</option>
-                    <option value="DEFENSIVA">{FORMATION_LABELS.DEFENSIVA}</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-
             <div className={`input-group ${styles.teamsField}`}>
               <label>Qtd. de Times</label>
               <select
@@ -177,165 +136,45 @@ export function SimulationTab() {
           )}
         </div>
 
-        {results.length > 0 && currentSimulation && (
-          <div className={styles.scenarioNav}>
-            <button className={`btn-secondary ${styles.navBtn}`} onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={currentIndex === 0}>
-              <ChevronLeft size={24} />
-            </button>
-
-            <div className={styles.scenarioTitle}>
-              <h3>Cenário {currentIndex + 1}</h3>
-              <span className={styles.scenarioSubtitle}>de {results.length} simulações</span>
-            </div>
-
-            <button className={`btn-secondary ${styles.navBtn}`} onClick={() => setCurrentIndex(prev => Math.min(results.length - 1, prev + 1))} disabled={currentIndex === results.length - 1}>
-              <ChevronRight size={24} />
-            </button>
-          </div>
-        )}
-
-        {results.length > 0 && currentSimulation && (
-          <div className={styles.rosterSection}>
-            <div className={styles.rosterHeader}>
-              <h3 className={styles.rosterTitle}>Lista dos Times</h3>
-              <div className={styles.rosterActions}>
-                <button className="btn-secondary" onClick={handleExportFieldImage} disabled={isExportingImage}>
-                  <ImageIcon size={16} /> {isExportingImage ? 'Gerando imagem...' : 'Exportar Campinhos (Imagem)'}
-                </button>
-                <button className="btn-secondary" onClick={handleExportWhatsApp}>
-                  <MessageCircle size={16} /> Exportar para WhatsApp
-                </button>
-              </div>
-            </div>
-            <TeamRosterList teams={currentSimulation.teams} />
-          </div>
-        )}
-
-        {results.length > 0 && currentSimulation && isImbalanced && (
-          <div className={styles.imbalanceBanner}>
-            <AlertTriangle size={22} style={{ flexShrink: 0 }} />
-            <span className={styles.imbalanceText}>
-              <strong style={{ color: 'var(--color-accent)' }}>Aviso de Equilíbrio:</strong> os jogadores cadastrados atualmente não são os ideais para a montagem de um time equilibrado (ou defensivamente equilibrado) neste cenário. Recomendamos cadastrar mais goleiros, defensores ou meias para refinar os potes técnicos.
-            </span>
-          </div>
-        )}
-
-        {results.length > 0 && currentSimulation && (
-          <div>
-            <div className={styles.teamsList}>
-              {currentSimulation.teams.map((team) => {
-                const observations = generateTeamObservations(team, currentSimulation.teams);
-                return (
-                <div key={team.id} className={`glass-panel ${styles.teamCard}`}>
-                  <div className={styles.teamHeader}>
-                    <div>
-                      <h3 className={styles.teamName}>{team.name}</h3>
-                      <span className={styles.teamSystem}>
-                        Sistema: {FORMATION_LABELS[team.tacticalSystem as keyof typeof FORMATION_LABELS] ?? team.tacticalSystem}
-                      </span>
-                    </div>
-                    <div className={styles.teamBadges}>
-                      <div className={styles.badge}>
-                        <div className={styles.badgeLabel}>Overall</div>
-                        <div className={styles.badgeValue} style={{ background: overallColor(team.overall) }}>{team.overall}</div>
-                      </div>
-                      <div className={styles.badge}>
-                        <div className={styles.badgeLabel} title="Quão difícil é fazer gol nesse time">Defesa</div>
-                        <div className={styles.badgeValue} style={{ background: overallColor(team.defensiveOverall) }}>
-                          <ShieldAlert size={13} /> {team.defensiveOverall}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={styles.teamBody}>
-                    <div className={styles.playersColumn}>
-                      {team.players.map((tp, idx) => (
-                        <div key={idx} className={styles.playerRow}>
-                          <div>
-                            <div className={styles.playerNameRow}>
-                              <span className={styles.playerName}>{tp.player.name}</span>
-                              {tp.improvisationPenalty > 0 && (
-                                <span title="Posição Improvisada"><AlertTriangle size={13} color="var(--color-accent)" /></span>
-                              )}
-                              {tp.player.isCaptain && <span title="Capitão" style={{ fontSize: '0.85rem' }}>👑</span>}
-                              {tp.roleShort === 'GK' && (
-                                <span title="Goleiro"><ShieldAlert size={13} color="var(--color-info)" /></span>
-                              )}
-                            </div>
-                            <div className={styles.playerOvr}>OVR: {Math.round((tp.roleScore / 6) * 100)}</div>
-                            <div className={styles.playerRoleRow}>
-                              {(tp.roleShort || '').length > 0 && <span className={styles.roleTag}>{tp.roleShort}</span>}
-                              <span className={styles.roleLabel}>{tp.roleLabel || tp.assignedRole}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <FieldMap playersList={team.players} />
-                  </div>
-
-                  {team.bench.length > 0 && (
-                    <div className={styles.benchSection}>
-                      <div className={styles.benchHeader}>
-                        <h4 className={styles.benchTitle}>Banco de Reservas</h4>
-                        {team.benchOverall !== undefined && (
-                          <div className={styles.benchAvg}>
-                            <span className={styles.benchAvgLabel}>Média do Banco:</span>
-                            <span className={styles.benchAvgValue} style={{ background: overallColor(team.benchOverall) }}>{team.benchOverall}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className={styles.benchList}>
-                        {team.bench.map((bp, idx) => (
-                          <span key={idx} className={styles.benchChip}>
-                            {bp.player.name} <span className={styles.benchChipRole}>({bp.roleShort || 'LINHA'})</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {observations.length > 0 && (
-                    <div className={styles.observationsSection}>
-                      <div className={styles.observationsHeader}>
-                        <Eye size={14} color="var(--color-text-muted)" />
-                        <h4 className={styles.observationsTitle}>Observações do Time</h4>
-                      </div>
-                      <div className={styles.observationsList}>
-                        {observations.map((obs, idx) => (
-                          <div key={idx} className={styles.observationItem}>
-                            <AlertTriangle size={14} className={styles.observationIcon} />
-                            <span>{obs}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                );
-              })}
+        {proposals.length > 0 && (
+          <div className={styles.rosterHeader}>
+            <h3 className={styles.rosterTitle}>Propostas de Times</h3>
+            <div className={styles.rosterActions}>
+              <button className="btn-secondary" onClick={handleExportFieldImage} disabled={isExportingImage}>
+                <ImageIcon size={16} /> {isExportingImage ? 'Gerando imagem...' : 'Exportar Propostas (Imagem)'}
+              </button>
+              <button className="btn-secondary" onClick={handleExportWhatsApp}>
+                <MessageCircle size={16} /> Exportar para WhatsApp
+              </button>
             </div>
           </div>
         )}
 
-        {results.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
+        {proposals.map((proposal) => (
+          <div key={proposal.id} className={styles.proposalBlock}>
+            <div className={styles.proposalHeader}>
+              <h3 className={styles.proposalTitle}>{proposal.title}</h3>
+            </div>
+            <TeamRosterList teams={proposal.teams} />
+          </div>
+        ))}
+
+        {proposals.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
           <div className={`glass-panel ${styles.stateCard}`} style={{ borderColor: 'var(--color-danger)' }}>
             <div className={styles.stateIcon} style={{ color: 'var(--color-danger)' }}>
               <AlertTriangle size={32} />
             </div>
-            <h3 className={styles.stateTitle} style={{ color: 'var(--color-danger)' }}>⚠️ Nenhuma escalação viável encontrada</h3>
+            <h3 className={styles.stateTitle} style={{ color: 'var(--color-danger)' }}>⚠️ Nenhuma proposta viável encontrada</h3>
             <p className={styles.stateText}>
-              Não há combinações de jogadores válidos suficientes para preencher estritamente as vagas táticas exigidas pelo esquema de linha.
-              <strong> Por favor, cadastre, altere o cadastro ou ative mais defensores, meias ou atacantes para viabilizar as equipes.</strong>
+              Não foi possível montar os times respeitando o limite de 4 atacantes por time.
+              <strong> Cadastre/ative mais jogadores de linha (defensores ou meias) para equilibrar o número de atacantes.</strong>
             </p>
           </div>
         )}
 
-        {results.length === 0 && !isSimulating && !hasSimulated && (
+        {proposals.length === 0 && !isSimulating && !hasSimulated && (
           <div className={styles.placeholderState}>
-            <p>Selecione a formação e clique em Gerar Times.</p>
+            <p>Escolha a quantidade de times e clique em Gerar Times.</p>
           </div>
         )}
       </div>
