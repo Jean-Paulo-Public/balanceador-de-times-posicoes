@@ -3,7 +3,7 @@ import type { Player } from '../../domain/types';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { posToLabel } from '../../domain/playerAttributes';
 import { StarRating } from '../../components/StarRating';
-import { Shield, Users, Swords, Edit, Trash2, ShieldAlert, Target, BatteryLow } from 'lucide-react';
+import { Shield, Users, Swords, Edit, Trash2, ShieldAlert, Target, BatteryLow, Send, Zap } from 'lucide-react';
 import styles from './PlayerCard.module.css';
 
 interface PlayerCardProps {
@@ -32,6 +32,8 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
           {player.isGoalkeeper && <span title="Goleiro (Emergência)"><ShieldAlert size={16} color="var(--color-info)" /></span>}
           {player.pivotFriendly && <span title="Facilidade em ser pivô"><Target size={15} color="var(--color-accent)" /></span>}
           {player.recompoePouco && <span title="Recompõe pouco"><BatteryLow size={15} color="var(--color-danger)" /></span>}
+          {player.boaSaidaDeBola && <span title="Boa saída de bola"><Send size={14} color="var(--color-info)" /></span>}
+          {player.veloz && <span title="Jogador veloz"><Zap size={14} color="var(--color-info)" /></span>}
         </div>
 
         <div className={styles.metaRow}>

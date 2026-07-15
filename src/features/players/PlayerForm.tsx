@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Shield, Users, Swords, Target, BatteryLow } from 'lucide-react';
+import { Shield, Users, Swords, Target, BatteryLow, Send, Zap } from 'lucide-react';
 import type { Player, Position } from '../../domain/types';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { StarRating } from '../../components/StarRating';
@@ -23,6 +23,13 @@ const POSITION_HELP: Record<Position, string> = {
   ATACANTE: 'Atacante de origem — entra primeiro no ataque (cada time aceita no máximo 4).',
 };
 
+const traitGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: '8px 14px',
+  marginTop: '6px',
+};
+
 export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const { addPlayer, updatePlayer } = usePlayerStore();
 
@@ -33,6 +40,8 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const [rating, setRating] = useState<number>(editingPlayer?.rating ?? DEFAULT_RATING);
   const [pivotFriendly, setPivotFriendly] = useState(editingPlayer?.pivotFriendly || false);
   const [recompoePouco, setRecompoePouco] = useState(editingPlayer?.recompoePouco || false);
+  const [boaSaidaDeBola, setBoaSaidaDeBola] = useState(editingPlayer?.boaSaidaDeBola || false);
+  const [veloz, setVeloz] = useState(editingPlayer?.veloz || false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +56,8 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
       rating,
       pivotFriendly,
       recompoePouco,
+      boaSaidaDeBola,
+      veloz,
     };
 
     if (editingPlayer) {
@@ -100,21 +111,31 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
             ))}
           </div>
           <p className={styles.helpText}>{POSITION_HELP[position]}</p>
+        </div>
 
-          <label className="checkbox-group" style={{ marginTop: 'var(--space-3)' }}>
-            <input type="checkbox" checked={pivotFriendly} onChange={e => setPivotFriendly(e.target.checked)} />
-            <Target size={15} color="var(--color-accent)" /> Facilidade em ser pivô
-          </label>
+        <div className="input-group">
+          <label>Características</label>
+          <div style={traitGridStyle}>
+            <label className="checkbox-group">
+              <input type="checkbox" checked={pivotFriendly} onChange={e => setPivotFriendly(e.target.checked)} />
+              <Target size={15} color="var(--color-accent)" /> Pivô
+            </label>
+            <label className="checkbox-group">
+              <input type="checkbox" checked={recompoePouco} onChange={e => setRecompoePouco(e.target.checked)} />
+              <BatteryLow size={15} color="var(--color-danger)" /> Recompõe pouco
+            </label>
+            <label className="checkbox-group">
+              <input type="checkbox" checked={boaSaidaDeBola} onChange={e => setBoaSaidaDeBola(e.target.checked)} />
+              <Send size={15} color="var(--color-info)" /> Boa saída de bola
+            </label>
+            <label className="checkbox-group">
+              <input type="checkbox" checked={veloz} onChange={e => setVeloz(e.target.checked)} />
+              <Zap size={15} color="var(--color-info)" /> Veloz
+            </label>
+          </div>
           <p className={styles.helpText}>
-            Se o time ficar sem atacante, um meia com essa marcação é o primeiro a ser improvisado no ataque.
-          </p>
-
-          <label className="checkbox-group" style={{ marginTop: 'var(--space-2)' }}>
-            <input type="checkbox" checked={recompoePouco} onChange={e => setRecompoePouco(e.target.checked)} />
-            <BatteryLow size={15} color="var(--color-danger)" /> Recompõe pouco
-          </label>
-          <p className={styles.helpText}>
-            Perfil mais ofensivo, corre menos pra trás. Vira a 2ª opção pra improvisar no ataque quando não há um pivô.
+            Na Proposta 1 esses traços são espalhados entre os times (1 por time quando dá; o pivô no máximo 1 por time).
+            O pivô também sobe pro ataque quando o time fica sem atacante, e "recompõe pouco" é a 2ª opção nesse caso.
           </p>
         </div>
 

@@ -4,8 +4,7 @@ import { clampRating, DEFAULT_RATING } from '../domain/playerAttributes';
 /**
  * Normalização de jogadores carregados/importados: garante o shape atual
  * (posição válida, rating na escala 0–5, flags booleanas). Não há mais
- * retrocompatibilidade com o modelo antigo de atributos — os jogadores já foram
- * convertidos para a estrela única.
+ * retrocompatibilidade com o modelo antigo de atributos.
  */
 
 const VALID_POSITIONS: Position[] = ['DEFENSOR', 'MEIA', 'ATACANTE'];
@@ -20,10 +19,14 @@ interface RawPlayer {
   rating?: unknown;
   pivotFriendly?: unknown;
   recompoePouco?: unknown;
+  boaSaidaDeBola?: unknown;
+  veloz?: unknown;
 }
 
 const asPosition = (value: unknown): Position =>
   typeof value === 'string' && VALID_POSITIONS.includes(value as Position) ? (value as Position) : 'MEIA';
+
+const asBool = (value: unknown): boolean => (typeof value === 'boolean' ? value : false);
 
 export const normalizePlayer = (raw: RawPlayer | Player): Player => {
   const r = (raw ?? {}) as RawPlayer;
@@ -31,12 +34,14 @@ export const normalizePlayer = (raw: RawPlayer | Player): Player => {
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
     name: typeof r.name === 'string' && r.name ? r.name : 'Jogador',
     active: typeof r.active === 'boolean' ? r.active : true,
-    isCaptain: typeof r.isCaptain === 'boolean' ? r.isCaptain : false,
-    isGoalkeeper: typeof r.isGoalkeeper === 'boolean' ? r.isGoalkeeper : false,
+    isCaptain: asBool(r.isCaptain),
+    isGoalkeeper: asBool(r.isGoalkeeper),
     position: asPosition(r.position),
     rating: typeof r.rating === 'number' ? clampRating(r.rating) : DEFAULT_RATING,
-    pivotFriendly: typeof r.pivotFriendly === 'boolean' ? r.pivotFriendly : false,
-    recompoePouco: typeof r.recompoePouco === 'boolean' ? r.recompoePouco : false,
+    pivotFriendly: asBool(r.pivotFriendly),
+    recompoePouco: asBool(r.recompoePouco),
+    boaSaidaDeBola: asBool(r.boaSaidaDeBola),
+    veloz: asBool(r.veloz),
   };
 };
 

@@ -19,6 +19,9 @@ const attackersByPosition = (team: Team) => lineOf(team).filter(tp => tp.player.
 const defendersByPosition = (team: Team) => lineOf(team).filter(tp => tp.player.position === 'DEFENSOR');
 const midfieldersByPosition = (team: Team) => lineOf(team).filter(tp => tp.player.position === 'MEIA');
 const roleCount = (team: Team, role: string) => team.players.filter(tp => tp.roleShort === role).length;
+const countTrait = (team: Team, pred: (p: Player) => boolean) =>
+  [...team.players, ...team.bench].filter(tp => pred(tp.player)).length;
+const lineTrait = (team: Team, pred: (p: Player) => boolean) => lineOf(team).filter(tp => pred(tp.player)).length;
 
 const allPlayerIds = (result: SimulationResult): string[] =>
   result.teams.flatMap(t => [...t.players, ...t.bench].map(tp => tp.player.id));
@@ -158,6 +161,54 @@ describe('generateTeams — improviso de defesa (meia > atacante)', () => {
   });
 });
 
+describe('generateTeams — spreadTraits (saída/veloz/pivô)', () => {
+  const traitPool = (): Player[] => [
+    makeGoalkeeper(4), makeGoalkeeper(4),
+    makePlayer('DEFENSOR', 4, { boaSaidaDeBola: true }),
+    makePlayer('DEFENSOR', 4, { boaSaidaDeBola: true }),
+    makePlayer('DEFENSOR', 3.5, { veloz: true }),
+    makePlayer('DEFENSOR', 3.5, { veloz: true }),
+    makePlayer('MEIA', 4, { pivotFriendly: true }),
+    makePlayer('MEIA', 3.5, { pivotFriendly: true }),
+    makePlayer('MEIA', 3, { pivotFriendly: true }),
+    makePlayer('MEIA', 3, { pivotFriendly: true }),
+    makePlayer('MEIA', 3), makePlayer('MEIA', 2.5),
+    makePlayer('ATACANTE', 4), makePlayer('ATACANTE', 3.5),
+    makePlayer('ATACANTE', 3), makePlayer('ATACANTE', 2.5),
+  ];
+
+  it('espalha 1 "boa saída de bola" e 1 "veloz" por time (quando há o suficiente)', () => {
+    const results = generateTeams(traitPool(), 2, { numSimulations: SIMS, maxSixLinePlayers: true, spreadTraits: true });
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) for (const team of r.teams) {
+      expect(lineTrait(team, p => p.boaSaidaDeBola)).toBeGreaterThanOrEqual(1);
+      expect(lineTrait(team, p => p.veloz)).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('limita os pivôs a ceil(pivôs/times) por time', () => {
+    // 4 pivôs, 2 times -> teto 2 por time.
+    const results = generateTeams(traitPool(), 2, { numSimulations: SIMS, maxSixLinePlayers: true, spreadTraits: true });
+    for (const r of results) for (const team of r.teams) {
+      expect(lineTrait(team, p => p.pivotFriendly)).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('com 2 pivôs e 2 times, no máximo 1 pivô por time', () => {
+    const pool: Player[] = [
+      makeGoalkeeper(4), makeGoalkeeper(4),
+      makePlayer('DEFENSOR', 4), makePlayer('DEFENSOR', 3.5), makePlayer('DEFENSOR', 3), makePlayer('DEFENSOR', 2.5),
+      makePlayer('MEIA', 4, { pivotFriendly: true }), makePlayer('MEIA', 3.5, { pivotFriendly: true }),
+      makePlayer('MEIA', 3), makePlayer('MEIA', 3),
+      makePlayer('ATACANTE', 4), makePlayer('ATACANTE', 3.5), makePlayer('ATACANTE', 3), makePlayer('ATACANTE', 2.5),
+    ];
+    const results = generateTeams(pool, 2, { numSimulations: SIMS, maxSixLinePlayers: true, spreadTraits: true });
+    for (const r of results) for (const team of r.teams) {
+      expect(lineTrait(team, p => p.pivotFriendly)).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
 describe('generateTeams — equilíbrio por estrela', () => {
   it('o melhor cenário mantém as médias de estrela próximas', () => {
     const results = generateTeams(buildBalancedPool(3), 3, { numSimulations: 400, maxSixLinePlayers: true });
@@ -200,12 +251,29 @@ describe('generateProposals — 3 propostas', () => {
     }
   });
 
-  it('Proposta 1 coloca (quando há capitães suficientes) 1 capitão por time', () => {
+  it('Propostas 1 e 2 colocam 1 capitão por time (havendo capitães suficientes)', () => {
     const pool = buildBalancedPool(2).map((p, i) => (i % 6 === 0 ? { ...p, isCaptain: true } : p));
     expect(pool.filter(p => p.isCaptain).length).toBeGreaterThanOrEqual(2);
     const proposals = generateProposals(pool, 2, { numSimulations: 400 });
+    expect(proposals.length).toBeGreaterThanOrEqual(2);
+    for (const idx of [0, 1]) {
+      for (const team of proposals[idx].teams) {
+        expect(team.players.some(tp => tp.player.isCaptain)).toBe(true);
+      }
+    }
+  });
+
+  it('Proposta 1 espalha boa saída de bola por time (1 cada, com 2 para 2 times)', () => {
+    const base = buildBalancedPool(2);
+    // marca exatamente 2 defensores com boa saída de bola
+    let marked = 0;
+    const pool = base.map(p => {
+      if (p.position === 'DEFENSOR' && !p.isGoalkeeper && marked < 2) { marked++; return { ...p, boaSaidaDeBola: true }; }
+      return p;
+    });
+    const proposals = generateProposals(pool, 2, { numSimulations: 500 });
     for (const team of proposals[0].teams) {
-      expect(team.players.some(tp => tp.player.isCaptain)).toBe(true);
+      expect(countTrait(team, p => p.boaSaidaDeBola)).toBeGreaterThanOrEqual(1);
     }
   });
 });

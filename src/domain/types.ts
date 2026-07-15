@@ -3,9 +3,9 @@
 // Modelo simplificado: cada jogador tem uma posição de origem (Defensor/Meia/
 // Atacante) e UMA nota em estrelas (0 a 5, de meio em meio). A qualidade
 // defensiva/ofensiva do jogador é embutida pelo próprio usuário na estrela.
-// Duas marcações booleanas ajudam a decidir QUEM improvisa no ataque quando um
-// time fica sem atacante de origem: `pivotFriendly` (facilidade de ser pivô) e
-// `recompoePouco` (não recompõe / perfil mais ofensivo).
+// Marcações booleanas ajudam a distribuir/melhorar o sorteio na Proposta 1:
+// `pivotFriendly` (facilidade de ser pivô), `recompoePouco` (perfil ofensivo),
+// `boaSaidaDeBola` e `veloz`.
 
 export type Position = 'DEFENSOR' | 'MEIA' | 'ATACANTE';
 
@@ -19,10 +19,14 @@ export interface Player {
   position: Position;
   /** Nota única do jogador, de 0 a 5, em passos de 0,5. */
   rating: number;
-  /** Facilidade em ser pivô — prioridade pra virar atacante improvisado. */
+  /** Facilidade em ser pivô — prioridade pra virar atacante improvisado; espalhado entre os times na P1. */
   pivotFriendly: boolean;
   /** Recompõe pouco (perfil mais ofensivo) — 2ª prioridade pra virar atacante improvisado. */
   recompoePouco: boolean;
+  /** Boa saída de bola — espalhado (1 por time, se possível) na Proposta 1. */
+  boaSaidaDeBola: boolean;
+  /** Jogador veloz — espalhado (1 por time, se possível) na Proposta 1. */
+  veloz: boolean;
 }
 
 /** Sistemas táticos suportados (usados só como rótulo do arranjo de campo). */

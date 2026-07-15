@@ -19,6 +19,8 @@ export const makePlayer = (
     rating: clampRating(rating),
     pivotFriendly: false,
     recompoePouco: false,
+    boaSaidaDeBola: false,
+    veloz: false,
     ...overrides,
   };
 };
@@ -82,8 +84,7 @@ export const buildMinimalPool = (numTeams: number): Player[] => {
 
 /**
  * Pool desnivelado: a qualidade está concentrada em poucos jogadores (metade
- * excelente, metade péssima), testando se o motor espalha bem esse desnível
- * entre os times em vez de empilhar os melhores em um só time.
+ * excelente, metade péssima), testando se o motor espalha bem esse desnível.
  */
 export const buildSkewedPool = (numTeams: number): Player[] => {
   const players: Player[] = [];

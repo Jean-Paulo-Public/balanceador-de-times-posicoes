@@ -6,10 +6,12 @@ describe('normalizePlayer — shape atual', () => {
     const p = normalizePlayer({
       id: 'x', name: 'Fulano', active: false, isCaptain: true, isGoalkeeper: true,
       position: 'ATACANTE', rating: 4.5, pivotFriendly: true, recompoePouco: true,
+      boaSaidaDeBola: true, veloz: true,
     });
     expect(p).toEqual({
       id: 'x', name: 'Fulano', active: false, isCaptain: true, isGoalkeeper: true,
       position: 'ATACANTE', rating: 4.5, pivotFriendly: true, recompoePouco: true,
+      boaSaidaDeBola: true, veloz: true,
     });
   });
 
@@ -22,6 +24,8 @@ describe('normalizePlayer — shape atual', () => {
     expect(p.rating).toBe(3);
     expect(p.pivotFriendly).toBe(false);
     expect(p.recompoePouco).toBe(false);
+    expect(p.boaSaidaDeBola).toBe(false);
+    expect(p.veloz).toBe(false);
     expect(typeof p.id).toBe('string');
   });
 

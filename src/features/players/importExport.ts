@@ -33,10 +33,7 @@ const downloadJson = (json: string, fileName: string): void => {
 
 /**
  * Exporta os jogadores como JSON. Em navegadores com suporte, abre o seletor
- * nativo de "Salvar como" — o usuário pode escolher qualquer pasta do
- * computador, inclusive uma pasta do Google Drive (ou OneDrive) sincronizada
- * localmente. Sem suporte, cai no download tradicional (vai para a pasta de
- * Downloads, como antes).
+ * nativo de "Salvar como". Sem suporte, cai no download tradicional.
  */
 export const exportPlayersAsJson = async (players: Player[]): Promise<void> => {
   const json = JSON.stringify(players, null, 2);
@@ -53,7 +50,6 @@ export const exportPlayersAsJson = async (players: Player[]): Promise<void> => {
       return;
     } catch (error) {
       if (isAbortError(error)) return; // usuário cancelou o seletor — não é erro
-      // qualquer outro problema com a API nativa: cai pro download clássico abaixo
     }
   }
 
@@ -70,7 +66,11 @@ interface RawPlayerLike {
   rating?: unknown;
   pivotFriendly?: unknown;
   recompoePouco?: unknown;
+  boaSaidaDeBola?: unknown;
+  veloz?: unknown;
 }
+
+const asBool = (value: unknown): boolean => (typeof value === 'boolean' ? value : false);
 
 /**
  * Converte um JSON importado (array de jogadores, ou objeto { players: [...] })
@@ -94,20 +94,21 @@ export const parseImportedPlayers = (rawText: string): Player[] => {
       id: typeof raw.id === 'string' && raw.id ? raw.id : crypto.randomUUID(),
       name: typeof raw.name === 'string' && raw.name ? raw.name : `Jogador ${index + 1}`,
       active: typeof raw.active === 'boolean' ? raw.active : true,
-      isCaptain: typeof raw.isCaptain === 'boolean' ? raw.isCaptain : false,
-      isGoalkeeper: typeof raw.isGoalkeeper === 'boolean' ? raw.isGoalkeeper : false,
+      isCaptain: asBool(raw.isCaptain),
+      isGoalkeeper: asBool(raw.isGoalkeeper),
       position: isValidPosition(raw.position) ? raw.position : 'MEIA',
       rating: typeof raw.rating === 'number' ? clampRating(raw.rating) : DEFAULT_RATING,
-      pivotFriendly: typeof raw.pivotFriendly === 'boolean' ? raw.pivotFriendly : false,
-      recompoePouco: typeof raw.recompoePouco === 'boolean' ? raw.recompoePouco : false,
+      pivotFriendly: asBool(raw.pivotFriendly),
+      recompoePouco: asBool(raw.recompoePouco),
+      boaSaidaDeBola: asBool(raw.boaSaidaDeBola),
+      veloz: asBool(raw.veloz),
     };
   });
 };
 
 /**
  * Abre o seletor nativo de arquivo (quando suportado) e já devolve os jogadores
- * importados. Devolve `null` quando a API não é suportada (o chamador deve usar
- * o fallback de `<input type="file">`) ou quando o usuário cancela o seletor.
+ * importados. Devolve `null` quando a API não é suportada ou o usuário cancela.
  */
 export const pickAndImportPlayersFile = async (): Promise<Player[] | null> => {
   if (!supportsNativeFilePicker()) return null;

@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import type { SimulationResult } from '../../domain/types';
 import { generateProposals } from '../../engine/generateTeams';
+import { generateTeamObservations } from '../../engine/observations';
 import { TeamRosterList } from './TeamRosterList';
 import { buildRosterText } from './rosterText';
 import { buildFieldMapsImage } from './fieldMapImage';
-import { Play, AlertTriangle, MessageCircle, Image as ImageIcon } from 'lucide-react';
+import { Play, AlertTriangle, MessageCircle, Image as ImageIcon, Eye } from 'lucide-react';
 import styles from './SimulationTab.module.css';
 
 const suggestTeams = (activePlayersCount: number) => (activePlayersCount <= 17 ? 2 : 3);
@@ -35,6 +36,7 @@ export function SimulationTab() {
     }, 100);
   };
 
+  // Observações NÃO entram nos exports (imagem/WhatsApp) — são só um extra na tela.
   const handleExportWhatsApp = () => {
     if (proposals.length === 0) return;
     const text = proposals
@@ -150,14 +152,42 @@ export function SimulationTab() {
           </div>
         )}
 
-        {proposals.map((proposal) => (
-          <div key={proposal.id} className={styles.proposalBlock}>
-            <div className={styles.proposalHeader}>
-              <h3 className={styles.proposalTitle}>{proposal.title}</h3>
+        {proposals.map((proposal) => {
+          const teamObservations = proposal.teams
+            .map(team => ({ team, obs: generateTeamObservations(team, proposal.teams) }))
+            .filter(entry => entry.obs.length > 0);
+
+          return (
+            <div key={proposal.id} className={styles.proposalBlock}>
+              <div className={styles.proposalHeader}>
+                <h3 className={styles.proposalTitle}>{proposal.title}</h3>
+              </div>
+              <TeamRosterList teams={proposal.teams} />
+
+              {teamObservations.length > 0 && (
+                <div className={styles.observationsSection}>
+                  <div className={styles.observationsHeader}>
+                    <Eye size={14} color="var(--color-text-muted)" />
+                    <h4 className={styles.observationsTitle}>Observações (só na tela, não vão pro export)</h4>
+                  </div>
+                  {teamObservations.map(({ team, obs }) => (
+                    <div key={team.id} className={styles.observationsTeamGroup}>
+                      <span className={styles.observationsTeamName}>{team.name}</span>
+                      <div className={styles.observationsList}>
+                        {obs.map((o, i) => (
+                          <div key={i} className={styles.observationItem}>
+                            <AlertTriangle size={14} className={styles.observationIcon} />
+                            <span>{o}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <TeamRosterList teams={proposal.teams} />
-          </div>
-        ))}
+          );
+        })}
 
         {proposals.length === 0 && !isSimulating && hasSimulated && activePlayersCount >= requiredPlayers && (
           <div className={`glass-panel ${styles.stateCard}`} style={{ borderColor: 'var(--color-danger)' }}>
