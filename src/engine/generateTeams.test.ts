@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateTeams, generateProposals, pickImprovisedAttacker } from './generateTeams';
-import { FORMATIONS } from '../domain/formations';
+import { isPivot, isFast, hasGoodBuildUp, hasLowRecovery } from './playerModel';
 import type { SimulationResult, Team, Player } from '../domain/types';
 import {
   makePlayer,
@@ -10,6 +10,7 @@ import {
   buildSkewedPool,
   buildNoAttackerPool,
   spread,
+  type TestTraits,
 } from './testFixtures';
 
 const SIMS = 250;
@@ -96,13 +97,19 @@ describe('generateTeams — arranjo do campinho', () => {
     }
   });
 
-  it('a quantidade de vagas de zaga/ataque bate com a formação escolhida', () => {
+  it('a quantidade de vagas de zaga/ataque forma um layout coerente (def+mei+ata=6, def<=2, ata<=2)', () => {
+    // O rótulo de formação legado (tacticalSystem) foi removido do modelo de
+    // domínio — a formação exibida ao usuário agora é a inferida pelo v2
+    // (formationModel.ts). Aqui só garantimos que o arranjo interno de vagas
+    // do gerador de candidatas continua coerente (6 de linha, no máx. 2 def/ata).
     const results = generateTeams(buildBalancedPool(2), 2, { numSimulations: SIMS, maxSixLinePlayers: true });
     for (const r of results.slice(0, 30)) for (const team of r.teams) {
-      const layout = FORMATIONS[team.tacticalSystem as keyof typeof FORMATIONS];
-      expect(layout).toBeDefined();
-      expect(roleCount(team, 'DEF')).toBe(layout.def);
-      expect(roleCount(team, 'ATA')).toBe(layout.ata);
+      const def = roleCount(team, 'DEF');
+      const mei = roleCount(team, 'MEI');
+      const ata = roleCount(team, 'ATA');
+      expect(def + mei + ata).toBe(6);
+      expect(def).toBeLessThanOrEqual(2);
+      expect(ata).toBeLessThanOrEqual(2);
     }
   });
 });
@@ -119,26 +126,31 @@ describe('generateTeams — improviso de atacante (meia sobe)', () => {
   });
 });
 
-describe('pickImprovisedAttacker — prioridade das tags', () => {
-  const mid = (rating: number, extra: Partial<Player> = {}) => makePlayer('MEIA', rating, extra);
+describe('pickImprovisedAttacker — prioridade dos traços (v2)', () => {
+  const mid = (rating: number, overrides: Partial<Player> & { traits?: TestTraits } = {}) =>
+    makePlayer('MEIA', rating, overrides);
 
   it('pivô tem prioridade mesmo sobre um meia de mais estrelas', () => {
-    const chosen = pickImprovisedAttacker([mid(5), mid(4, { pivotFriendly: true }), mid(3, { recompoePouco: true })]);
-    expect(chosen?.pivotFriendly).toBe(true);
+    const chosen = pickImprovisedAttacker([
+      mid(5), mid(4, { traits: { pivot: true } }), mid(3, { traits: { lowRecovery: true } }),
+    ]);
+    expect(chosen && isPivot(chosen)).toBe(true);
     expect(chosen?.rating).toBe(4);
   });
 
   it('com vários pivôs, escolhe o de mais estrelas', () => {
-    const chosen = pickImprovisedAttacker([mid(3, { pivotFriendly: true }), mid(4.5, { pivotFriendly: true })]);
+    const chosen = pickImprovisedAttacker([
+      mid(3, { traits: { pivot: true } }), mid(4.5, { traits: { pivot: true } }),
+    ]);
     expect(chosen?.rating).toBe(4.5);
   });
 
   it('sem pivô, usa quem "recompõe pouco"', () => {
-    const chosen = pickImprovisedAttacker([mid(5), mid(3, { recompoePouco: true })]);
-    expect(chosen?.recompoePouco).toBe(true);
+    const chosen = pickImprovisedAttacker([mid(5), mid(3, { traits: { lowRecovery: true } })]);
+    expect(chosen && hasLowRecovery(chosen)).toBe(true);
   });
 
-  it('sem tag nenhuma, escolhe o de mais estrelas', () => {
+  it('sem traço nenhum, escolhe o de mais estrelas', () => {
     const chosen = pickImprovisedAttacker([mid(2), mid(4)]);
     expect(chosen?.rating).toBe(4);
   });
@@ -161,17 +173,17 @@ describe('generateTeams — improviso de defesa (meia > atacante)', () => {
   });
 });
 
-describe('generateTeams — spreadTraits (saída/veloz/pivô)', () => {
+describe('generateTeams — spreadTraits (saída/veloz/pivô, modelo v2)', () => {
   const traitPool = (): Player[] => [
     makeGoalkeeper(4), makeGoalkeeper(4),
-    makePlayer('DEFENSOR', 4, { boaSaidaDeBola: true }),
-    makePlayer('DEFENSOR', 4, { boaSaidaDeBola: true }),
-    makePlayer('DEFENSOR', 3.5, { veloz: true }),
-    makePlayer('DEFENSOR', 3.5, { veloz: true }),
-    makePlayer('MEIA', 4, { pivotFriendly: true }),
-    makePlayer('MEIA', 3.5, { pivotFriendly: true }),
-    makePlayer('MEIA', 3, { pivotFriendly: true }),
-    makePlayer('MEIA', 3, { pivotFriendly: true }),
+    makePlayer('DEFENSOR', 4, { traits: { goodBuildUp: true } }),
+    makePlayer('DEFENSOR', 4, { traits: { goodBuildUp: true } }),
+    makePlayer('DEFENSOR', 3.5, { traits: { fast: true } }),
+    makePlayer('DEFENSOR', 3.5, { traits: { fast: true } }),
+    makePlayer('MEIA', 4, { traits: { pivot: true } }),
+    makePlayer('MEIA', 3.5, { traits: { pivot: true } }),
+    makePlayer('MEIA', 3, { traits: { pivot: true } }),
+    makePlayer('MEIA', 3, { traits: { pivot: true } }),
     makePlayer('MEIA', 3), makePlayer('MEIA', 2.5),
     makePlayer('ATACANTE', 4), makePlayer('ATACANTE', 3.5),
     makePlayer('ATACANTE', 3), makePlayer('ATACANTE', 2.5),
@@ -181,8 +193,8 @@ describe('generateTeams — spreadTraits (saída/veloz/pivô)', () => {
     const results = generateTeams(traitPool(), 2, { numSimulations: SIMS, maxSixLinePlayers: true, spreadTraits: true });
     expect(results.length).toBeGreaterThan(0);
     for (const r of results) for (const team of r.teams) {
-      expect(lineTrait(team, p => p.boaSaidaDeBola)).toBeGreaterThanOrEqual(1);
-      expect(lineTrait(team, p => p.veloz)).toBeGreaterThanOrEqual(1);
+      expect(lineTrait(team, hasGoodBuildUp)).toBeGreaterThanOrEqual(1);
+      expect(lineTrait(team, isFast)).toBeGreaterThanOrEqual(1);
     }
   });
 
@@ -190,7 +202,7 @@ describe('generateTeams — spreadTraits (saída/veloz/pivô)', () => {
     // 4 pivôs, 2 times -> teto 2 por time.
     const results = generateTeams(traitPool(), 2, { numSimulations: SIMS, maxSixLinePlayers: true, spreadTraits: true });
     for (const r of results) for (const team of r.teams) {
-      expect(lineTrait(team, p => p.pivotFriendly)).toBeLessThanOrEqual(2);
+      expect(lineTrait(team, isPivot)).toBeLessThanOrEqual(2);
     }
   });
 
@@ -198,13 +210,13 @@ describe('generateTeams — spreadTraits (saída/veloz/pivô)', () => {
     const pool: Player[] = [
       makeGoalkeeper(4), makeGoalkeeper(4),
       makePlayer('DEFENSOR', 4), makePlayer('DEFENSOR', 3.5), makePlayer('DEFENSOR', 3), makePlayer('DEFENSOR', 2.5),
-      makePlayer('MEIA', 4, { pivotFriendly: true }), makePlayer('MEIA', 3.5, { pivotFriendly: true }),
+      makePlayer('MEIA', 4, { traits: { pivot: true } }), makePlayer('MEIA', 3.5, { traits: { pivot: true } }),
       makePlayer('MEIA', 3), makePlayer('MEIA', 3),
       makePlayer('ATACANTE', 4), makePlayer('ATACANTE', 3.5), makePlayer('ATACANTE', 3), makePlayer('ATACANTE', 2.5),
     ];
     const results = generateTeams(pool, 2, { numSimulations: SIMS, maxSixLinePlayers: true, spreadTraits: true });
     for (const r of results) for (const team of r.teams) {
-      expect(lineTrait(team, p => p.pivotFriendly)).toBeLessThanOrEqual(1);
+      expect(lineTrait(team, isPivot)).toBeLessThanOrEqual(1);
     }
   });
 });
@@ -251,29 +263,20 @@ describe('generateProposals — 3 propostas', () => {
     }
   });
 
-  it('Propostas 1 e 2 colocam 1 capitão por time (havendo capitães suficientes)', () => {
-    const pool = buildBalancedPool(2).map((p, i) => (i % 6 === 0 ? { ...p, isCaptain: true } : p));
-    expect(pool.filter(p => p.isCaptain).length).toBeGreaterThanOrEqual(2);
-    const proposals = generateProposals(pool, 2, { numSimulations: 400 });
-    expect(proposals.length).toBeGreaterThanOrEqual(2);
-    for (const idx of [0, 1]) {
-      for (const team of proposals[idx].teams) {
-        expect(team.players.some(tp => tp.player.isCaptain)).toBe(true);
-      }
-    }
-  });
-
   it('Proposta 1 espalha boa saída de bola por time (1 cada, com 2 para 2 times)', () => {
     const base = buildBalancedPool(2);
-    // marca exatamente 2 defensores com boa saída de bola
+    // marca exatamente 2 defensores com boa saída de bola (CRI bem acima da média)
     let marked = 0;
     const pool = base.map(p => {
-      if (p.position === 'DEFENSOR' && !p.isGoalkeeper && marked < 2) { marked++; return { ...p, boaSaidaDeBola: true }; }
+      if (p.position === 'DEFENSOR' && !p.isGoalkeeper && marked < 2) {
+        marked++;
+        return { ...p, attributes: { ...p.attributes, CRI: 90 } };
+      }
       return p;
     });
     const proposals = generateProposals(pool, 2, { numSimulations: 500 });
     for (const team of proposals[0].teams) {
-      expect(countTrait(team, p => p.boaSaidaDeBola)).toBeGreaterThanOrEqual(1);
+      expect(countTrait(team, hasGoodBuildUp)).toBeGreaterThanOrEqual(1);
     }
   });
 });

@@ -1,14 +1,10 @@
-import type { Player, Position } from '../../domain/types';
-import { clampRating, DEFAULT_RATING } from '../../domain/playerAttributes';
+import type { Player } from '../../domain/types';
+import { normalizePlayer } from '../../store/migration';
 
-const VALID_POSITIONS: Position[] = ['DEFENSOR', 'MEIA', 'ATACANTE'];
 const DEFAULT_FILE_NAME = 'jogadores-balanceador.json';
 const JSON_PICKER_TYPES: FilePickerAcceptTypeOption[] = [
   { description: 'JSON', accept: { 'application/json': ['.json'] } },
 ];
-
-const isValidPosition = (position: unknown): position is Position =>
-  typeof position === 'string' && VALID_POSITIONS.includes(position as Position);
 
 /**
  * A File System Access API (showSaveFilePicker/showOpenFilePicker) só existe em
@@ -59,22 +55,13 @@ export const exportPlayersAsJson = async (players: Player[]): Promise<void> => {
 interface RawPlayerLike {
   id?: unknown;
   name?: unknown;
-  active?: unknown;
-  isCaptain?: unknown;
-  isGoalkeeper?: unknown;
-  position?: unknown;
-  rating?: unknown;
-  pivotFriendly?: unknown;
-  recompoePouco?: unknown;
-  boaSaidaDeBola?: unknown;
-  veloz?: unknown;
 }
-
-const asBool = (value: unknown): boolean => (typeof value === 'boolean' ? value : false);
 
 /**
  * Converte um JSON importado (array de jogadores, ou objeto { players: [...] })
- * em jogadores válidos no shape atual (estrela 0–5 + flags).
+ * em jogadores válidos no shape atual. Reaproveita `normalizePlayer` (mesma
+ * validação usada na migração de dados do localStorage) pra posição, rating,
+ * attributes/gk/handicapPct — evita duplicar a validação dos atributos v2.
  */
 export const parseImportedPlayers = (rawText: string): Player[] => {
   const parsed = JSON.parse(rawText) as unknown;
@@ -90,19 +77,10 @@ export const parseImportedPlayers = (rawText: string): Player[] => {
 
   return rawPlayers.map((source, index): Player => {
     const raw = (source ?? {}) as RawPlayerLike;
-    return {
-      id: typeof raw.id === 'string' && raw.id ? raw.id : crypto.randomUUID(),
-      name: typeof raw.name === 'string' && raw.name ? raw.name : `Jogador ${index + 1}`,
-      active: typeof raw.active === 'boolean' ? raw.active : true,
-      isCaptain: asBool(raw.isCaptain),
-      isGoalkeeper: asBool(raw.isGoalkeeper),
-      position: isValidPosition(raw.position) ? raw.position : 'MEIA',
-      rating: typeof raw.rating === 'number' ? clampRating(raw.rating) : DEFAULT_RATING,
-      pivotFriendly: asBool(raw.pivotFriendly),
-      recompoePouco: asBool(raw.recompoePouco),
-      boaSaidaDeBola: asBool(raw.boaSaidaDeBola),
-      veloz: asBool(raw.veloz),
-    };
+    // Nome default indexado ("Jogador 1", "Jogador 2"...), diferente do default
+    // genérico de `normalizePlayer` — só isso é específico da importação.
+    const withDefaultName = { ...raw, name: typeof raw.name === 'string' && raw.name ? raw.name : `Jogador ${index + 1}` };
+    return normalizePlayer(withDefaultName);
   });
 };
 

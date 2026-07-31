@@ -1,5 +1,7 @@
 import type { Player, Position } from '../domain/types';
 import { clampRating } from '../domain/playerAttributes';
+import { deriveAttributesFromStar, deriveGkFromStar } from '../domain/deriveAttributes';
+import { BOX_TO_BOX, allEnabled } from '../domain/positions';
 
 /**
  * Roster de teste "de brincadeira": jogadores reais e conhecidos do futebol
@@ -56,16 +58,25 @@ const FUN_ROSTER_SEED: FunPlayerSeed[] = [
 ];
 
 export const buildFunRoster = (): Player[] =>
-  FUN_ROSTER_SEED.map((seed) => ({
-    id: crypto.randomUUID(),
-    name: seed.name,
-    active: true,
-    isCaptain: false,
-    isGoalkeeper: seed.isGoalkeeper ?? false,
-    position: seed.position,
-    rating: clampRating(seed.rating),
-    pivotFriendly: seed.pivotFriendly ?? false,
-    recompoePouco: seed.recompoePouco ?? false,
-    boaSaidaDeBola: seed.boaSaidaDeBola ?? false,
-    veloz: seed.veloz ?? false,
-  }));
+  FUN_ROSTER_SEED.map((seed) => {
+    const rating = clampRating(seed.rating);
+    const isGoalkeeper = seed.isGoalkeeper ?? false;
+    return {
+      id: crypto.randomUUID(),
+      name: seed.name,
+      active: true,
+      isGoalkeeper,
+      position: seed.position,
+      rating,
+      // Semeia os atributos v2 a partir da estrela + traços legados do roster
+      // de brincadeira (mesma lógica usada na migração de dados antigos).
+      attributes: deriveAttributesFromStar(rating, seed.position, {
+        veloz: seed.veloz,
+        boaSaidaDeBola: seed.boaSaidaDeBola,
+        recompoePouco: seed.recompoePouco,
+        pivotFriendly: seed.pivotFriendly,
+      }),
+      gk: deriveGkFromStar(rating, isGoalkeeper),
+      acceptedPositions: allEnabled([BOX_TO_BOX]),
+    };
+  });

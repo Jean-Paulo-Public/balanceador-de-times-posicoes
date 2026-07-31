@@ -1,7 +1,31 @@
-import type { Player, Team, TeamSlotPlayer, SimulationResult, Position, FormationType } from '../domain/types';
-import { FORMATIONS, chooseFormation } from '../domain/formations';
+// Gerador de divisões candidatas (quem-está-com-quem, mínimos por posição,
+// reserva de goleiro, teto de atacantes). Usado internamente por `balance.ts`
+// como fonte de divisões viáveis — não é mais um motor alternativo exposto ao
+// usuário (a UI só chama `balanceTeams`/`balanceTeamsOptions`).
+
+import type { Player, Team, TeamSlotPlayer, SimulationResult, Position } from '../domain/types';
 import { posToLabel } from '../domain/playerAttributes';
+import { isPivot, isFast, hasGoodBuildUp, hasLowRecovery } from './playerModel';
 import { getCombinations } from './combinatorics';
+
+/** Layout de vagas por setor (fora o goleiro) — as três somam 6 jogadores de linha. */
+interface Layout { def: number; mei: number; ata: number }
+const LAYOUT_OFENSIVA: Layout = { def: 2, mei: 2, ata: 2 }; // 2-2-2
+const LAYOUT_DEFENSIVA: Layout = { def: 2, mei: 3, ata: 1 }; // 2-3-1
+const LAYOUT_EQUILIBRADA: Layout = { def: 1, mei: 4, ata: 1 }; // 1-4-1
+
+/**
+ * Escolhe o layout de vagas que melhor encaixa nas contagens reais de
+ * defensores e atacantes de um time:
+ *  - 2+ defensores e 2+ atacantes  -> 2-2-2
+ *  - 2+ defensores e <2 atacantes  -> 2-3-1
+ *  - <2 defensores (qualquer nº de atacantes) -> 1-4-1
+ */
+const chooseLayout = (numDefenders: number, numAttackers: number): Layout => {
+  if (numDefenders >= 2 && numAttackers >= 2) return LAYOUT_OFENSIVA;
+  if (numDefenders >= 2) return LAYOUT_DEFENSIVA;
+  return LAYOUT_EQUILIBRADA;
+};
 
 /** Um time não pode ter mais que isso de atacantes de origem na linha (regra dura). */
 const MAX_ATTACKERS = 4;
@@ -27,8 +51,6 @@ export interface GenerateOptions {
   maxSixLinePlayers?: boolean;
   /** Garante (se possível) 1 defensor, 1 meia e 1 atacante de origem por time. */
   enforcePositionMin?: boolean;
-  /** Garante (se possível) pelo menos 1 capitão por time. */
-  enforceCaptainPerTeam?: boolean;
   /**
    * Espalha entre os times (Proposta 1): 1 por time de "boa saída de bola" e
    * "veloz" (excedente distribuído normalmente), e limita os pivôs a
@@ -50,7 +72,7 @@ type Eligible = (t: TeamData, p: Player) => boolean;
 
 const lineSum = (t: TeamData): number => t.line.reduce((s, p) => s + p.rating, 0);
 const attackerCount = (t: TeamData): number => t.line.filter(p => p.position === 'ATACANTE').length;
-const pivotLineCount = (t: TeamData): number => t.line.filter(p => p.pivotFriendly).length;
+const pivotLineCount = (t: TeamData): number => t.line.filter(p => isPivot(p)).length;
 const hasPosition = (t: TeamData, pos: Position): boolean => t.line.some(p => p.position === pos);
 const teamHasTrait = (t: TeamData, pred: Predicate): boolean => (t.gk ? pred(t.gk) : false) || t.line.some(pred);
 const mean = (values: number[]): number => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
@@ -104,7 +126,7 @@ const assignToWeakestEligible = (
 /**
  * Espalha um jogador que satisfaz `pred` por time: cada time que ainda não tem
  * nenhum recebe um (o time mais fraco primeiro), até acabarem os candidatos.
- * Usado pra capitão e pros traços (boa saída de bola, veloz, pivô) na Proposta 1.
+ * Usado pros traços (boa saída de bola, veloz, pivô) na Proposta 1.
  */
 const spreadOnePerTeam = (teams: TeamData[], working: Player[], pred: Predicate, getNoise: () => number) => {
   let progressed = true;
@@ -147,9 +169,9 @@ const makeSlot = (
  */
 export const pickImprovisedAttacker = (midfielders: Player[]): Player | null => {
   if (midfielders.length === 0) return null;
-  const pivots = midfielders.filter(p => p.pivotFriendly);
+  const pivots = midfielders.filter(p => isPivot(p));
   if (pivots.length > 0) return maxByRating(pivots);
-  const lazy = midfielders.filter(p => p.recompoePouco);
+  const lazy = midfielders.filter(p => hasLowRecovery(p));
   if (lazy.length > 0) return maxByRating(lazy);
   return maxByRating(midfielders);
 };
@@ -160,7 +182,7 @@ export const pickImprovisedAttacker = (midfielders: Player[]): Player | null => 
  * zagueiro de origem, um MEIA (preferência sobre ATACANTE) recua pra zaga.
  * A formação é a que melhor encaixa nas contagens de defensores e atacantes.
  */
-const arrangeTeam = (team: TeamData): { slots: TeamSlotPlayer[]; formation: FormationType } => {
+const arrangeTeam = (team: TeamData): { slots: TeamSlotPlayer[] } => {
   const byRatingDesc = (a: Player, b: Player) => b.rating - a.rating;
   const naturalDef = team.line.filter(p => p.position === 'DEFENSOR').sort(byRatingDesc);
   const naturalAta = team.line.filter(p => p.position === 'ATACANTE').sort(byRatingDesc);
@@ -172,8 +194,7 @@ const arrangeTeam = (team: TeamData): { slots: TeamSlotPlayer[]; formation: Form
   }
   const effectiveAttackers = naturalAta.length > 0 ? naturalAta.length : improvisedAttacker ? 1 : 0;
 
-  const formation = chooseFormation(naturalDef.length, effectiveAttackers);
-  const layout = FORMATIONS[formation];
+  const layout = chooseLayout(naturalDef.length, effectiveAttackers);
 
   const defStarters = naturalDef.slice(0, layout.def);
   defStarters.forEach(p => usedIds.add(p.id));
@@ -212,7 +233,7 @@ const arrangeTeam = (team: TeamData): { slots: TeamSlotPlayer[]; formation: Form
     slots.push(makeSlot(p, `Atacante ${i + 1}`, 'ATA', improvised ? 'Atacante (improvisado)' : 'Atacante', improvised));
   });
 
-  return { slots, formation };
+  return { slots };
 };
 
 export const generateTeams = (
@@ -225,7 +246,6 @@ export const generateTeams = (
     neverScaleGoalkeepers = false,
     maxSixLinePlayers = false,
     enforcePositionMin = true,
-    enforceCaptainPerTeam = false,
     spreadTraits = false,
   } = options;
 
@@ -239,10 +259,10 @@ export const generateTeams = (
 
   // Teto de pivôs por time (só na Proposta 1): 1 por time, subindo pro mínimo
   // possível (ceil) quando há mais pivôs do que times.
-  const totalPivots = pool.filter(p => p.pivotFriendly).length;
+  const totalPivots = pool.filter(p => isPivot(p)).length;
   const pivotCap = spreadTraits && totalPivots > 0 ? Math.max(1, Math.ceil(totalPivots / numTeams)) : Infinity;
   const eligibleCapped: Eligible = (t, p) =>
-    canReceive(t, p) && (!p.pivotFriendly || pivotLineCount(t) < pivotCap);
+    canReceive(t, p) && (!isPivot(p) || pivotLineCount(t) < pivotCap);
 
   const results: SimulationResult[] = [];
   const seenSignatures = new Set<string>();
@@ -272,16 +292,11 @@ export const generateTeams = (
 
     working.sort(() => Math.random() - 0.5);
 
-    // 2) (opcional) 1 capitão por time.
-    if (enforceCaptainPerTeam) {
-      spreadOnePerTeam(teams, working, p => p.isCaptain, getNoise);
-    }
-
-    // 3) (opcional, Proposta 1) espalha 1 por time de boa saída de bola, veloz e pivô.
+    // 2) (opcional, Proposta 1) espalha 1 por time de boa saída de bola, veloz e pivô.
     if (spreadTraits) {
-      spreadOnePerTeam(teams, working, p => p.boaSaidaDeBola, getNoise);
-      spreadOnePerTeam(teams, working, p => p.veloz, getNoise);
-      spreadOnePerTeam(teams, working, p => p.pivotFriendly, getNoise);
+      spreadOnePerTeam(teams, working, p => hasGoodBuildUp(p), getNoise);
+      spreadOnePerTeam(teams, working, p => isFast(p), getNoise);
+      spreadOnePerTeam(teams, working, p => isPivot(p), getNoise);
     }
 
     // 4) (opcional) 1 jogador de cada posição por time, preferindo >= 3 estrelas.
@@ -342,7 +357,7 @@ export const generateTeams = (
 
     // 8) Monta campinhos, overall e banco de cada time.
     const finalTeams: Team[] = teams.map(t => {
-      const { slots, formation } = arrangeTeam(t);
+      const { slots } = arrangeTeam(t);
       const onFieldRatings = [...(t.gk ? [t.gk.rating] : []), ...t.line.map(p => p.rating)];
       const overall = mean(onFieldRatings);
 
@@ -356,7 +371,6 @@ export const generateTeams = (
         name: t.name,
         overall,
         benchOverall,
-        tacticalSystem: formation,
         players: slots,
         bench: benchSlots,
       };
@@ -408,9 +422,9 @@ const canonicalMembership = (r: SimulationResult): string =>
 
 /**
  * Gera as 3 propostas exibidas juntas:
- *  - Proposta 1: 1 def + 1 meia + 1 atacante + 1 goleiro + 1 capitão por time, e
+ *  - Proposta 1: 1 def + 1 meia + 1 atacante + 1 goleiro por time, e
  *    espalha "boa saída de bola", "veloz" e pivô entre os times.
- *  - Proposta 2: 1 def + 1 meia + 1 atacante + 1 goleiro + 1 capitão por time
+ *  - Proposta 2: 1 def + 1 meia + 1 atacante + 1 goleiro por time
  *    (sem o espalhamento de traços), diferente da 1.
  *  - Proposta 3: só a garantia de 1 goleiro por time.
  * Todas balanceadas pela estrela e respeitando o teto de 4 atacantes.
@@ -427,9 +441,9 @@ export const generateProposals = (
   };
 
   const lists: { title: string; list: SimulationResult[] }[] = [
-    { title: 'Proposta 1', list: generateTeams(players, numTeams, { ...base, enforcePositionMin: true, enforceCaptainPerTeam: true, spreadTraits: true }) },
-    { title: 'Proposta 2', list: generateTeams(players, numTeams, { ...base, enforcePositionMin: true, enforceCaptainPerTeam: true }) },
-    { title: 'Proposta 3', list: generateTeams(players, numTeams, { ...base, enforcePositionMin: false, enforceCaptainPerTeam: false }) },
+    { title: 'Proposta 1', list: generateTeams(players, numTeams, { ...base, enforcePositionMin: true, spreadTraits: true }) },
+    { title: 'Proposta 2', list: generateTeams(players, numTeams, { ...base, enforcePositionMin: true }) },
+    { title: 'Proposta 3', list: generateTeams(players, numTeams, { ...base, enforcePositionMin: false }) },
   ];
 
   const proposals: SimulationResult[] = [];

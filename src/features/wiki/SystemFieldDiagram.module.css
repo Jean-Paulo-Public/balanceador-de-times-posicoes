@@ -1,0 +1,90 @@
+/* Campinho ILUSTRATIVO dos 4 sistemas táticos (aba wiki). Mesma família visual
+   do FieldMapV2 (gradiente verde, linha central, círculo central), mas sem
+   jogadores — só rótulos de posição. Ver src/features/simulation/FieldMapV2.tsx. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.field {
+  position: relative;
+  width: 100%;
+  /* 160% (era 128%): campo mais alto pra afastar os chips na vertical — com
+     128% as posições de defesa ficavam amontoadas uma sobre a outra. */
+  padding-bottom: 160%;
+  border-radius: 8px;
+  background: linear-gradient(to top, #1d7a3d, #2fa159);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.midline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.centerCircle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  margin-top: -22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.chip {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 7px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.chipGk {
+  background: rgba(255, 193, 7, 0.85);
+  color: #1a1a1a;
+}
+
+.description {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

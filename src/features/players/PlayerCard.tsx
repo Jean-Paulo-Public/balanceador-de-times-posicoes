@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import type { Player } from '../../domain/types';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { posToLabel } from '../../domain/playerAttributes';
-import { StarRating } from '../../components/StarRating';
-import { Shield, Users, Swords, Edit, Trash2, ShieldAlert, Target, BatteryLow, Send, Zap } from 'lucide-react';
+import { baseOverallOf, isInjured, isPivot, effectiveAttributesBase, effectiveGk } from '../../engine';
+import { Shield, Users, Swords, Edit, Trash2, ShieldAlert } from 'lucide-react';
+import { computeDisplayOvrs, OVR_DISPLAY_ITEMS } from './ovrDisplay';
 import styles from './PlayerCard.module.css';
 
 interface PlayerCardProps {
@@ -18,8 +19,20 @@ const POSITION_VISUAL: Record<Player['position'], { icon: ReactNode; color: stri
 };
 
 export function PlayerCard({ player, onEdit }: PlayerCardProps) {
-  const { togglePlayerActive, deletePlayer } = usePlayerStore();
+  const { togglePlayerActive, deletePlayer, updatePlayer } = usePlayerStore();
   const visual = POSITION_VISUAL[player.position];
+  const displayOvrs = computeDisplayOvrs(effectiveAttributesBase(player), effectiveGk(player));
+
+  const toggleInjury = () => {
+    if (isInjured(player)) {
+      updatePlayer(player.id, { handicapPct: 0 });
+      return;
+    }
+    const input = window.prompt('Lesão: reduzir TODOS os atributos temporariamente. Informe a % de redução (1–100):', '30');
+    if (input == null) return;
+    const pct = Math.max(0, Math.min(100, Math.round(Number(input))));
+    if (Number.isFinite(pct) && pct > 0) updatePlayer(player.id, { handicapPct: pct });
+  };
 
   return (
     <div className={`${styles.card} animate-fade-in`}>
@@ -28,22 +41,36 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
       <div className={`${styles.main} ${!player.active ? styles.inactive : ''}`}>
         <div className={styles.nameRow}>
           <span className={`${styles.name} ${!player.active ? styles.nameStrike : ''}`}>{player.name}</span>
-          {player.isCaptain && <span title="Capitão">👑</span>}
           {player.isGoalkeeper && <span title="Goleiro (Emergência)"><ShieldAlert size={16} color="var(--color-info)" /></span>}
-          {player.pivotFriendly && <span title="Facilidade em ser pivô"><Target size={15} color="var(--color-accent)" /></span>}
-          {player.recompoePouco && <span title="Recompõe pouco"><BatteryLow size={15} color="var(--color-danger)" /></span>}
-          {player.boaSaidaDeBola && <span title="Boa saída de bola"><Send size={14} color="var(--color-info)" /></span>}
-          {player.veloz && <span title="Jogador veloz"><Zap size={14} color="var(--color-info)" /></span>}
         </div>
 
         <div className={styles.metaRow}>
           <span className={`chip ${visual.chip}`}>{visual.icon} {posToLabel(player.position)}</span>
-          {player.pivotFriendly && <span className="chip chip-accent">Pivô</span>}
+          {isPivot(player) && <span className="chip chip-accent">Pivô</span>}
         </div>
 
         <div className={styles.overalls}>
-          <StarRating label="" value={player.rating} readOnly size={18} />
-          <span className={styles.overallLabel} style={{ marginLeft: '8px' }}>{player.rating}/5</span>
+          <div className={styles.ovrRow}>
+            {OVR_DISPLAY_ITEMS.map((item) => {
+              const value = displayOvrs[item.key];
+              return (
+                <span
+                  key={item.key}
+                  className={`${styles.ovrChip} ${item.key === 'geral' ? styles.ovrChipPrimary : ''}`}
+                  title={item.fullLabel}
+                  aria-label={item.fullLabel}
+                >
+                  <span className={styles.ovrAbbr}>{item.abbr}</span>
+                  <span className={styles.ovrValue}>{value == null ? '—' : value}</span>
+                </span>
+              );
+            })}
+          </div>
+          {isInjured(player) && (
+            <span className={styles.overallLabel} style={{ marginLeft: '8px', color: 'var(--color-danger)' }}>
+              lesão −{player.handicapPct}% (base {baseOverallOf(player)})
+            </span>
+          )}
         </div>
       </div>
 
@@ -57,6 +84,14 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
           <span className={styles.toggleTrack} />
           <span className={styles.toggleThumb} />
         </label>
+        <button
+          className={styles.iconBtn}
+          title={isInjured(player) ? `Remover lesão (−${player.handicapPct}%)` : 'Marcar lesão (reduz atributos)'}
+          style={{ color: isInjured(player) ? 'var(--color-danger)' : undefined }}
+          onClick={toggleInjury}
+        >
+          🩹
+        </button>
         <button className={styles.iconBtn} onClick={() => onEdit(player)}>
           <Edit size={17} />
         </button>
