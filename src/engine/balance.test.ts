@@ -4,7 +4,7 @@ import type { AttrVector } from '../domain/attributes';
 import { clampAttr } from '../domain/attributes';
 import { BOX_TO_BOX, allEnabled } from '../domain/positions';
 import { ALL_SYSTEMS } from './formationModel';
-import { balanceTeams, getLastBalanceRunReport } from './balance';
+import { balanceTeams, getLastBalanceRunReport, W } from './balance';
 
 /**
  * PRNG determinístico (mulberry32) usado SÓ NESTE ARQUIVO DE TESTE para
@@ -121,6 +121,13 @@ describe('nota de goleiro desacoplada do resto', () => {
     const bom = balanceTeams(poolComGk(95), 2, { neverScaleGoalkeepers: true })!;
     expect(sortedOf(bom, 'def')).toEqual(sortedOf(ruim, 'def'));
     expect(sortedOf(bom, 'geral')).toEqual(sortedOf(ruim, 'geral'));
+  });
+});
+
+describe('W (pesos do custo multi-métrica)', () => {
+  it('somam 1,00', () => {
+    const sum = W.def + W.geral + W.off + W.recuo + W.pressao + W.fitQuality;
+    expect(sum).toBeCloseTo(1, 9);
   });
 });
 

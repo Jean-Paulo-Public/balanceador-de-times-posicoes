@@ -162,6 +162,27 @@ export function WikiTab() {
           </p>
         </Section>
 
+        <Section title="'Tanto faz a ordem' (ordem indiferente)">
+          <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Tem um terceiro botão no cadastro, junto da lista de posições: <strong>"Tanto faz a ordem"</strong>.
+            É diferente do coringa — o jogador continua jogando SÓ nas posições que você marcou (a restrição não
+            muda em nada), mas deixa de existir preferência entre elas: sair da 1ª posição da lista pra 3ª não
+            custa nada pro balanceador. Serve pro jogador que topa qualquer uma das posições marcadas, mas não tem
+            uma "posição do coração" entre elas.
+          </p>
+          <p style={{ margin: 0, marginTop: 8, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Resumindo os três casos:
+          </p>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <li><strong>Lista ordenada normal</strong>: só joga nas posições marcadas, e a ordem entre elas importa
+              — sair da preferida custa caro.</li>
+            <li><strong>Ordem indiferente</strong>: só joga nas posições marcadas (igualzinho), mas não tem
+              preferência entre elas — qualquer uma marcada serve do mesmo jeito.</li>
+            <li><strong>BOX_TO_BOX (coringa)</strong>: joga em QUALQUER posição do jogo, marcada ou não — o
+              sistema decide tudo.</li>
+          </ul>
+        </Section>
+
         <Section title="Rodízio de goleiro">
           <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
             Quando um time tem mais de um goleiro apto, eles revezam o gol jogo a jogo — os melhores primeiro, pra
@@ -175,36 +196,40 @@ export function WikiTab() {
 
         <Section title="Rodízio de banco (quem fica de fora)">
           <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
-            Ninguém escolhe quem senta a dedo: a cada um dos 6 jogos o sistema decide sozinho quem vai pro banco.
-            A regra muda de acordo com o <strong>tamanho do banco daquele time naquela rodada</strong> — e é normal
-            (não é bug) times diferentes de uma mesma pelada se comportarem diferente:
-          </p>
-          <ul style={{ margin: '10px 0 0', paddingLeft: 20, fontSize: '0.88rem', lineHeight: 1.6 }}>
-            <li>
-              <strong>Banco pequeno (até 2 jogadores de fora por jogo):</strong> regra fechada — quem sentou no jogo
-              anterior joga neste. Ninguém fica dois jogos seguidos no banco.
-            </li>
-            <li>
-              <strong>Banco maior (3 ou mais de fora por jogo):</strong> essa restrição é liberada — repetir banco em
-              jogos seguidos passa a ser permitido, porque com um banco grande não tem como todo mundo jogar toda
-              rodada.
-            </li>
-          </ul>
-          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
-            Por exemplo: numa pelada com 3 times, é normal o Time A ter 2 de fora por jogo (ninguém repete) e o Time B
-            ter 3 de fora por jogo (pode repetir) — <strong>comportamentos diferentes na mesma pelada, ao mesmo
-            tempo</strong>, e isso é esperado.
+            Ninguém escolhe quem senta a dedo: a cada jogo do rodízio o sistema decide sozinho quem vai pro banco. A
+            regra é <strong>ESTRITA e sempre a mesma, para todo mundo</strong>: ninguém pode ficar mais de um jogo
+            seguido no banco — não importa o tamanho do banco daquele time nem quantos times a pelada tem.
           </p>
           <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
-            Mesmo quando essa restrição é liberada, a justiça continua valendo: vai pro banco quem sentou{' '}
-            <strong>menos vezes</strong> até ali. Ninguém fica de fora quatro vezes enquanto outro fica só uma. Em
-            caso de empate entre igualmente elegíveis, sai quem sentar causa menos desequilíbrio no time que fica em
-            campo.
+            Entre os elegíveis a sentar (quem não sentou no jogo anterior), a justiça continua valendo: vai pro banco
+            quem sentou <strong>menos vezes</strong> até ali. Ninguém fica de fora quatro vezes enquanto outro fica só
+            uma. Em caso de empate entre igualmente elegíveis, sai quem sentar causa menos desequilíbrio no time que
+            fica em campo.
           </p>
           <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
-            Se mesmo assim não der pra cumprir "ninguém repete banco" (banco pequeno, mas o elenco daquele momento não
-            permite), o app não resolve isso escondido: mostra um aviso dizendo quem ficou preso na regra. Nesse caso,
-            considere ativar mais jogadores de linha ou reduzir o número de times.
+            <strong>Quando essa regra não dá pra cumprir</strong> (o time não tem jogadores de linha suficientes para
+            alternar sem ninguém repetir banco), a divisão não é mais oferecida com um aviso "por baixo do pano" —
+            ela é <strong>excluída das opções</strong>. Se depois de excluir todas as divisões que não cumprem a
+            regra não sobrar nenhuma, a simulação é bloqueada e o app explica o motivo com números concretos daquele
+            elenco (quantos jogadores de linha há, quantas vagas de banco por rodada, e por que isso torna impossível
+            alternar sem repetir) e sugere saídas — jogar com mais times, ativar/desativar jogadores, ou usar a
+            exceção abaixo.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Exceção: "Permitir jogadores ficarem duas vezes seguidas no banco"</strong> (checkbox na tela de
+            Simular Partidas, desmarcado por padrão e que NÃO fica salvo — some quando você reabre o app). Quando
+            marcado e a regra estrita não fecha o banco sozinha, um jogador pode sentar pela <strong>2ª vez
+            seguida</strong> — isso "gasta um crédito": esse jogador fica de fora do banco (sempre jogando) pelas{' '}
+            <strong>6 rodadas seguintes</strong>; passada essa janela, ele volta a ser elegível normalmente (inclusive
+            podendo gastar o crédito de novo mais adiante, se for preciso). A regra estrita continua sendo a
+            preferida mesmo com a exceção ligada: o crédito de ninguém é gasto à toa, só quando faltam vagas
+            estritamente elegíveis pra fechar o banco daquela rodada.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Importante: a exceção é um alívio <strong>limitado</strong>, não uma solução permanente. Um elenco
+            estruturalmente pequeno demais pro número de times escolhido pode voltar a travar mais adiante no
+            rodízio, mesmo com a exceção ligada — nesse caso, considere jogar com mais times (o banco de cada time
+            encolhe) ou ativar mais jogadores de linha.
           </p>
         </Section>
       </div>

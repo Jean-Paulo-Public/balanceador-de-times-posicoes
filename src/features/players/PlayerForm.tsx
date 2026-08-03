@@ -57,11 +57,19 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const [acceptedPositions, setAcceptedPositions] = useState<PositionPreferenceEntry[]>(() =>
     editingPlayer ? withBoxToBox([...editingPlayer.acceptedPositions]) : defaultAcceptedPositions(),
   );
+  const [positionOrderIndifferent, setPositionOrderIndifferent] = useState<boolean>(
+    editingPlayer?.positionOrderIndifferent ?? false,
+  );
   const setAttr = (k: AttributeKey, v: number) => setAttributes((prev) => ({ ...prev, [k]: clampAttr(v) }));
 
   const boxToBox = hasEnabledBoxToBox(acceptedPositions);
-  const setBoxToBox = (enabled: boolean) =>
+  const setBoxToBox = (enabled: boolean) => {
     setAcceptedPositions((prev) => prev.map((e) => (e.position === BOX_TO_BOX ? { ...e, enabled } : e)));
+    // BOX_TO_BOX já não paga penalidade de ordem (libera a própria capacidade) —
+    // "ordem indiferente" ficaria redundante e os dois controles diriam a
+    // mesma coisa. Desliga pra não guardar um estado que a UI esconde.
+    if (enabled) setPositionOrderIndifferent(false);
+  };
   const toggleLinePosition = (pos: LinePosition, enabled: boolean) =>
     setAcceptedPositions((prev) => prev.map((e) => (e.position === pos ? { ...e, enabled } : e)));
   const moveLinePosition = (pos: LinePosition, dir: -1 | 1) =>
@@ -167,6 +175,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     gk: isGoalkeeper ? (gk ?? GK_DEFAULT) : null,
     acceptedPositions,
     positionOverrides,
+    positionOrderIndifferent,
     handicapPct: editingPlayer?.handicapPct,
   };
   const profile = describePlayerProfile(attributes);
@@ -191,6 +200,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
       gk: isGoalkeeper ? (gk ?? GK_DEFAULT) : null,
       acceptedPositions,
       positionOverrides,
+      positionOrderIndifferent,
     };
 
     if (editingPlayer) {
@@ -513,6 +523,28 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
               ? 'Coringa: o balanceador escolhe livremente a melhor posição pra este jogador em cada time/jogo.'
               : 'Marque as posições que ele aceita jogar e ordene por preferência (setas). Índice 1 = preferência máxima.'}
           </p>
+
+          <label
+            className="checkbox-group"
+            style={{ marginBottom: 8, opacity: boxToBox ? 0.5 : 1 }}
+            title={boxToBox ? 'Redundante com o coringa: BOX_TO_BOX já não paga penalidade de ordem.' : undefined}
+          >
+            <input
+              type="checkbox"
+              checked={boxToBox ? false : positionOrderIndifferent}
+              disabled={boxToBox}
+              onChange={(e) => setPositionOrderIndifferent(e.target.checked)}
+            />
+            Tanto faz a ordem — pode me escalar em qualquer uma das posições que marquei
+          </label>
+          <p className={styles.helpText}>
+            {boxToBox
+              ? 'Com o coringa ligado esta opção não faz diferença — ele já joga em qualquer posição, sem preferência.'
+              : positionOrderIndifferent
+                ? 'Ele só joga nas posições marcadas abaixo (isso não muda), mas não tem preferência entre elas — a ordem da lista deixa de valer.'
+                : 'Desligado: a ordem da lista abaixo importa — sair da 1ª preferência tem custo.'}
+          </p>
+
           <div style={{ display: 'grid', gap: 6, opacity: boxToBox ? 0.45 : 1, pointerEvents: boxToBox ? 'none' : 'auto' }}>
             {linePrefs.map((e, i) => (
               <div key={e.position} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem' }}>

@@ -173,8 +173,11 @@ export const identityCost = (player: Player, identity: LinePosition): number => 
   if (hasEnabledBoxToBox(prefs)) return 100 - fit; // coringa: sem restrição, sem penalidade
   const effective = enabledLinePositions(prefs); // só habilitadas, ordem original
   const idx = effective.indexOf(identity);
-  // RESTRIÇÃO HARD: fora da lista (ou desabilitada) = proibitivo.
+  // RESTRIÇÃO HARD: fora da lista (ou desabilitada) = proibitivo. Vale IGUAL
+  // com ou sem `positionOrderIndifferent` — a flag zera só a penalidade de
+  // ORDEM, nunca a capacidade (ver JSDoc do campo em domain/types.ts).
   if (idx === -1) return INFEASIBLE_COST;
+  if (player.positionOrderIndifferent) return 100 - fit; // ordem indiferente: sem penalidade de profundidade
   return (100 - fit) + PREFERENCE_PENALTY_SCALE * relativeDepth(idx, effective.length);
 };
 

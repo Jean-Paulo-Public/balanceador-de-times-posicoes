@@ -1,14 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePlayer, normalizePlayers, parseAttrVector, parseAcceptedPositions } from './migration';
+import { normalizePlayer, normalizePlayers, parseAttrVector, parseAcceptedPositions, parsePositionOrderIndifferent } from './migration';
 import { emptyAttrs } from '../domain/attributes';
 
 const VALID_ATTRS = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 48, MOV: 45, FIS: 58 };
+/**
+ * `acceptedPositions` é OBRIGATÓRIO: sem lista válida o registro é descartado
+ * (não existe mais default de coringa). Todo jogador-exemplo válido precisa dela.
+ */
+const VALID_POS = [{ position: 'PIVO', enabled: true }];
 
 describe('normalizePlayer — shape atual (v9, escala ÚNICA 0–100, sem estrela)', () => {
   it('jogador válido (attributes + gk) passa intacto, com defaults sensatos pros campos cosméticos', () => {
     const p = normalizePlayer({
       id: 'x', name: 'Fulano', active: false, isGoalkeeper: true,
-      position: 'ATACANTE', attributes: VALID_ATTRS, gk: 88,
+      position: 'ATACANTE', attributes: VALID_ATTRS, gk: 88, acceptedPositions: VALID_POS,
     });
     expect(p).not.toBeNull();
     expect(p!.id).toBe('x');
@@ -26,7 +31,7 @@ describe('normalizePlayer — shape atual (v9, escala ÚNICA 0–100, sem estrel
     const attrs = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 48, MOV: 45, FIS: 58 };
     const p = normalizePlayer({
       id: 'y', name: 'Ciclano', position: 'MEIA', isGoalkeeper: true,
-      attributes: attrs, gk: 77,
+      attributes: attrs, gk: 77, acceptedPositions: VALID_POS,
     });
     expect(p!.attributes).toEqual(attrs);
     expect(p!.gk).toBe(77);
@@ -34,12 +39,12 @@ describe('normalizePlayer — shape atual (v9, escala ÚNICA 0–100, sem estrel
 
   it('não-goleiro com gk explicitamente null preserva o null', () => {
     const attrs = { FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50 };
-    const p = normalizePlayer({ name: 'Sem Gol', attributes: attrs, gk: null, isGoalkeeper: false });
+    const p = normalizePlayer({ name: 'Sem Gol', attributes: attrs, gk: null, isGoalkeeper: false, acceptedPositions: VALID_POS });
     expect(p!.gk).toBeNull();
   });
 
   it('aplica defaults pros campos cosméticos quando faltam (meia, ativo, sem goleiro)', () => {
-    const p = normalizePlayer({ name: 'Sem Nada', attributes: VALID_ATTRS, gk: null });
+    const p = normalizePlayer({ name: 'Sem Nada', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS });
     expect(p).not.toBeNull();
     expect(p!.active).toBe(true);
     expect(p!.isGoalkeeper).toBe(false);
@@ -48,14 +53,14 @@ describe('normalizePlayer — shape atual (v9, escala ÚNICA 0–100, sem estrel
   });
 
   it('posição inválida vira MEIA (não invalida o registro)', () => {
-    const p = normalizePlayer({ position: 'ZAGUEIRO' as unknown as string, attributes: VALID_ATTRS, gk: null });
+    const p = normalizePlayer({ position: 'ZAGUEIRO' as unknown as string, attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS });
     expect(p!.position).toBe('MEIA');
   });
 
   it('normalizePlayers converte a lista e ignora entrada não-array', () => {
     expect(normalizePlayers([
-      { name: 'A', attributes: VALID_ATTRS, gk: null },
-      { name: 'B', attributes: VALID_ATTRS, gk: 90 },
+      { name: 'A', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS },
+      { name: 'B', attributes: VALID_ATTRS, gk: 90, acceptedPositions: VALID_POS },
     ])).toHaveLength(2);
     expect(normalizePlayers(null)).toEqual([]);
   });
@@ -86,26 +91,27 @@ describe('normalizePlayer — DESCARTE (não conserto) de registro malformado', 
   });
 
   it('`gk` null é ACEITO (não é "ausente" — é o estado válido de "não joga no gol")', () => {
-    expect(normalizePlayer({ name: 'ComGkNull', attributes: VALID_ATTRS, gk: null })).not.toBeNull();
+    expect(normalizePlayer({ name: 'ComGkNull', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS })).not.toBeNull();
   });
 
   it('clampeia valores de attributes fora de 0–100 quando o vetor é válido (9 chaves)', () => {
     const attrs = { FIN: 500, CRI: -30, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58 };
-    const p = normalizePlayer({ name: 'Clamp', attributes: attrs, gk: null });
+    const p = normalizePlayer({ name: 'Clamp', attributes: attrs, gk: null, acceptedPositions: VALID_POS });
     expect(p!.attributes.FIN).toBe(100);
     expect(p!.attributes.CRI).toBe(0);
   });
 
   it('gk fora de 0–100 é clampeado (não descartado)', () => {
-    const p = normalizePlayer({ name: 'GkAlto', attributes: VALID_ATTRS, gk: 150 });
+    const p = normalizePlayer({ name: 'GkAlto', attributes: VALID_ATTRS, gk: 150, acceptedPositions: VALID_POS });
     expect(p!.gk).toBe(100);
   });
 
   it('normalizePlayers filtra (não quebra) quando a lista mistura registros válidos e malformados', () => {
     const result = normalizePlayers([
-      { name: 'Valido', attributes: VALID_ATTRS, gk: null },
+      { name: 'Valido', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS },
       { name: 'SemAtributos' },
-      { name: 'GkInvalido', attributes: VALID_ATTRS, gk: 'x' },
+      { name: 'GkInvalido', attributes: VALID_ATTRS, gk: 'x', acceptedPositions: VALID_POS },
+      { name: 'SemPosicoes', attributes: VALID_ATTRS, gk: null }, // sem acceptedPositions → descartado
     ]);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('Valido');
@@ -125,12 +131,63 @@ describe('parseAttrVector — validação estrita do vetor 0–100', () => {
   });
 });
 
-describe('normalizePlayer — acceptedPositions / default BOX_TO_BOX', () => {
-  const BTB = [{ position: 'BOX_TO_BOX', enabled: true }];
+describe('normalizePlayer — acceptedPositions NUNCA vira coringa sozinho', () => {
+  // REGRESSÃO CORRIGIDA: havia um default `?? [{ BOX_TO_BOX }]` aqui. Como
+  // normalizePlayer roda em TODA reidratação do localStorage, dado gravado por
+  // versão anterior (sem `acceptedPositions`) fazia o ELENCO INTEIRO virar
+  // coringa em silêncio. Regra do dono: BOX_TO_BOX só existe se o usuário marcar
+  // no cadastro. Sem lista válida, o registro é DESCARTADO — como attributes/gk.
 
-  it('jogador sem acceptedPositions recebe [BOX_TO_BOX] (default de domínio, não "conserto")', () => {
+  // REGRESSÃO 2 (mesmo sintoma, outra causa): `parseAcceptedPositions` FORÇAVA
+  // `enabled: true` na entrada BOX_TO_BOX ("coringa nunca é desabilitado"). Mas o
+  // PlayerForm grava a entrada do coringa com `enabled: false` para dizer "este
+  // jogador NÃO é coringa" — ela fica na lista só pra preservar a ordem. Com o
+  // valor forçado, TODO jogador do elenco real virava coringa a cada
+  // reidratação e o sistema de posições era ignorado.
+  it('BOX_TO_BOX com enabled:false NÃO é forçado a true (jogador não vira coringa)', () => {
+    const p = normalizePlayer({
+      name: 'Torres', attributes: VALID_ATTRS, gk: 20,
+      acceptedPositions: [
+        { position: 'BOX_TO_BOX', enabled: false },
+        { position: 'ALA', enabled: true },
+        { position: 'SEGUNDO_ATACANTE', enabled: true },
+        { position: 'FIXO', enabled: false },
+      ],
+    });
+    const box = p!.acceptedPositions.find((e) => e.position === 'BOX_TO_BOX');
+    expect(box!.enabled).toBe(false);
+    // só as habilitadas de verdade são jogáveis
+    expect(p!.acceptedPositions.filter((e) => e.enabled).map((e) => e.position)).toEqual(['ALA', 'SEGUNDO_ATACANTE']);
+  });
+
+  it('BOX_TO_BOX com enabled:true é preservado (o coringa de verdade continua coringa)', () => {
+    const p = normalizePlayer({
+      name: 'Bruno', attributes: VALID_ATTRS, gk: 50,
+      acceptedPositions: [{ position: 'BOX_TO_BOX', enabled: true }, { position: 'PIVO', enabled: false }],
+    });
+    expect(p!.acceptedPositions.find((e) => e.position === 'BOX_TO_BOX')!.enabled).toBe(true);
+  });
+
+  it('jogador SEM acceptedPositions é DESCARTADO — não vira coringa', () => {
     const p = normalizePlayer({ name: 'Legado', attributes: VALID_ATTRS, gk: null });
-    expect(p!.acceptedPositions).toEqual(BTB);
+    expect(p).toBeNull();
+  });
+
+  it('elenco inteiro de dado antigo (sem acceptedPositions) é descartado, não convertido em coringas', () => {
+    const antigos = [
+      { name: 'A', attributes: VALID_ATTRS, gk: null },
+      { name: 'B', attributes: VALID_ATTRS, gk: null },
+      { name: 'C', attributes: VALID_ATTRS, gk: null },
+    ];
+    expect(normalizePlayers(antigos)).toEqual([]);
+  });
+
+  it('BOX_TO_BOX só aparece quando está GRAVADO no dado (escolha do usuário)', () => {
+    const p = normalizePlayer({
+      name: 'Coringa', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: [{ position: 'BOX_TO_BOX', enabled: true }],
+    });
+    expect(p!.acceptedPositions).toEqual([{ position: 'BOX_TO_BOX', enabled: true }]);
   });
 
   it('preserva uma lista ordenada válida já existente', () => {
@@ -158,21 +215,55 @@ describe('normalizePlayer — acceptedPositions / default BOX_TO_BOX', () => {
     expect(p!.acceptedPositions).toEqual([{ position: 'PIVO', enabled: true }]);
   });
 
-  it('array vazio cai no default [BOX_TO_BOX]', () => {
-    const p = normalizePlayer({ name: 'Vazio', attributes: VALID_ATTRS, gk: null, acceptedPositions: [] });
-    expect(p!.acceptedPositions).toEqual(BTB);
+  it('array vazio DESCARTA o registro (não vira coringa)', () => {
+    expect(normalizePlayer({ name: 'Vazio', attributes: VALID_ATTRS, gk: null, acceptedPositions: [] })).toBeNull();
   });
 
-  it('todas as entradas desabilitadas cai no default [BOX_TO_BOX] (sem posição jogável)', () => {
+  it('todas as entradas desabilitadas DESCARTA o registro (sem posição jogável)', () => {
     const p = normalizePlayer({
       name: 'SemPosicao', attributes: VALID_ATTRS, gk: null,
       acceptedPositions: [{ position: 'PIVO', enabled: false }],
     });
-    expect(p!.acceptedPositions).toEqual(BTB);
+    expect(p).toBeNull();
   });
 
   it('parseAcceptedPositions exposto isoladamente (mesma função usada acima)', () => {
     expect(parseAcceptedPositions([])).toBeUndefined();
     expect(parseAcceptedPositions([{ position: 'PIVO', enabled: true }])).toEqual([{ position: 'PIVO', enabled: true }]);
+  });
+});
+
+describe('normalizePlayer — positionOrderIndifferent (opcional/cosmético, NÃO estrito)', () => {
+  it('parsePositionOrderIndifferent aceita true/false e ignora qualquer outro tipo', () => {
+    expect(parsePositionOrderIndifferent(true)).toBe(true);
+    expect(parsePositionOrderIndifferent(false)).toBe(false);
+    expect(parsePositionOrderIndifferent('true')).toBeUndefined();
+    expect(parsePositionOrderIndifferent(1)).toBeUndefined();
+    expect(parsePositionOrderIndifferent(null)).toBeUndefined();
+    expect(parsePositionOrderIndifferent(undefined)).toBeUndefined();
+    expect(parsePositionOrderIndifferent({})).toBeUndefined();
+  });
+
+  it('normalizePlayer grava positionOrderIndifferent quando é boolean', () => {
+    const p = normalizePlayer({
+      name: 'ComFlag', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, positionOrderIndifferent: true,
+    });
+    expect(p!.positionOrderIndifferent).toBe(true);
+  });
+
+  it('tipo inválido só OMITE o campo — nunca descarta o jogador (diferente de attributes/gk/acceptedPositions)', () => {
+    const p = normalizePlayer({
+      name: 'FlagInvalida', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, positionOrderIndifferent: 'sim',
+    });
+    expect(p).not.toBeNull();
+    expect(p!.positionOrderIndifferent).toBeUndefined();
+  });
+
+  it('campo ausente não aparece no jogador normalizado', () => {
+    const p = normalizePlayer({ name: 'SemFlag', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS });
+    expect(p).not.toBeNull();
+    expect(p!.positionOrderIndifferent).toBeUndefined();
   });
 });

@@ -98,10 +98,15 @@ const mean = (vals: number[]): number =>
  * Potencial de ataque ≈ (finalização_efetiva)^α · (criação_efetiva)^(1-α), α=0,5.
  * Se ninguém cria, tende a 0 mesmo com grandes finalizadores ("não recebe bola").
  */
-export const potencialAtaque = (outfield: AttrVector[], alpha = 0.5): number => {
+export const potencialAtaque = (outfield: AttrVector[], alpha = 0.5, zoneFactors?: readonly number[]): number => {
   if (outfield.length === 0) return 0;
-  const finEf = mean(topN(outfield.map((a) => a.FIN), 2));
-  const criEf = Math.max(...outfield.map((a) => a.CRI));
+  const f = (i: number) => zoneFactors?.[i] ?? 1;
+  // O fator da ZONA escala os atributos ANTES das agregações (top-2 / máximo).
+  // Tem de ser antes: o campo é grande, e um jogador escalado no fixo contribui
+  // pouco pro ataque — se o fator entrasse depois, o melhor CRI do time
+  // continuaria sendo dele independente da vaga que ocupa.
+  const finEf = mean(topN(outfield.map((a, i) => a.FIN * f(i)), 2));
+  const criEf = Math.max(...outfield.map((a, i) => a.CRI * f(i)));
   return Math.pow(finEf, alpha) * Math.pow(criEf, 1 - alpha);
 };
 
@@ -111,9 +116,12 @@ export const potencialAtaque = (outfield: AttrVector[], alpha = 0.5): number => 
  * defensivo puro), não INT — esta métrica é sobre solidez de marcação, não
  * sobre pressão à frente.
  */
-export const estabilidadeDefensiva = (outfield: AttrVector[], beta = 0.6): number => {
+export const estabilidadeDefensiva = (outfield: AttrVector[], beta = 0.6, zoneFactors?: readonly number[]): number => {
   if (outfield.length === 0) return 0;
-  const defEf = mean(topN(outfield.map((a) => a.DEF), 2));
-  const recEf = mean(outfield.map((a) => a.RCD));
+  const f = (i: number) => zoneFactors?.[i] ?? 1;
+  // Mesma lógica invertida do ataque: um pivô plantado na área adversária
+  // contribui pouco pra solidez defensiva, mesmo que tenha DEF alta.
+  const defEf = mean(topN(outfield.map((a, i) => a.DEF * f(i)), 2));
+  const recEf = mean(outfield.map((a, i) => a.RCD * f(i)));
   return Math.pow(defEf, beta) * Math.pow(recEf, 1 - beta);
 };

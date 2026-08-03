@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePlayerStore } from '../../store/usePlayerStore';
-import { balanceTeamsOptions, buildTeamSchedule, getLastBalanceRunReport, type BalanceResult, type BalancedTeam } from '../../engine';
+import { balanceTeamsOptions, buildTeamSchedule, gamesForTeamCount, getLastBalanceRunReport, type BalanceResult, type BalancedTeam } from '../../engine';
 import { LINE_POSITIONS, type LinePosition } from '../../domain/positions';
 import { FieldMapV2 } from './FieldMapV2';
 import { teamTactics } from './tactics';
@@ -17,10 +17,15 @@ const chip = (label: string, value: number | string) => (
   <span className="chip chip-info" style={{ fontSize: '0.78rem' }}>{label} {value}</span>
 );
 
-function TeamBlock({ team }: { team: BalancedTeam }) {
+function TeamBlock({ team, totalGames, allowTwoConsecutiveBench }: { team: BalancedTeam; totalGames: number; allowTwoConsecutiveBench: boolean }) {
   const t = team;
   const tactics = teamTactics(t);
-  const schedule = buildTeamSchedule(t, 6);
+  // `totalGames` vem de `gamesForTeamCount` (9 com 2 times, 6 com 3+) — tem de
+  // ser o MESMO número usado no custo, senão os campinhos exibem um rodízio
+  // diferente do que foi balanceado. `allowTwoConsecutiveBench` precisa ser o
+  // MESMO valor usado na simulação (não o estado ATUAL do checkbox, que pode
+  // ter mudado depois) — vem do resultado, não da leitura ao vivo do estado.
+  const schedule = buildTeamSchedule(t, totalGames, undefined, allowTwoConsecutiveBench);
   return (
     <div className={styles.proposalBlock}>
       <div className={styles.proposalHeader}>
@@ -38,7 +43,7 @@ function TeamBlock({ team }: { team: BalancedTeam }) {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
         {schedule.constant
-          ? <FieldMapV2 slots={schedule.games[0].slots} goalkeeperName={schedule.games[0].goalkeeperName} label="Jogo 1 ao 6" />
+          ? <FieldMapV2 slots={schedule.games[0].slots} goalkeeperName={schedule.games[0].goalkeeperName} label={`Jogo 1 ao ${totalGames}`} />
           : schedule.games.map((g) => (
             <FieldMapV2 key={g.game} slots={g.slots} goalkeeperName={g.goalkeeperName} label={`Jogo ${g.game}`} />
           ))}
@@ -88,6 +93,17 @@ export function SimulationTab() {
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [infeasibilityMessage, setInfeasibilityMessage] = useState<string | null>(null);
   const [candidatesEvaluated, setCandidatesEvaluated] = useState<number | null>(null);
+  // Checkbox de EXCEÇÃO (regra do dono): permite sentar 2x seguidas no banco
+  // (com cooldown, ver benchRotation.ts). Padrão DESMARCADO e NÃO persistido —
+  // estado local do componente de propósito: é uma exceção pontual, tem de
+  // voltar desmarcada sempre que o app abre (não faz parte do zustand
+  // persistido, ao contrário de `neverScaleGoalkeepers`).
+  const [allowTwoConsecutiveBench, setAllowTwoConsecutiveBench] = useState(false);
+  // Valor de `allowTwoConsecutiveBench` efetivamente usado na ÚLTIMA simulação
+  // — precisa ficar "congelado" pro recálculo de exibição do rodízio
+  // (`TeamBlock`/`buildTeamSchedule`) continuar batendo com o resultado
+  // mostrado, mesmo que o usuário mexa no checkbox depois de já ter simulado.
+  const [simAllowTwoConsecutiveBench, setSimAllowTwoConsecutiveBench] = useState(false);
   const current = results[resultIdx] ?? null;
 
   const maxFeasibleTeams = Math.max(1, Math.floor(activePlayersCount / 6));
@@ -97,12 +113,17 @@ export function SimulationTab() {
   const handleSimulate = () => {
     setIsSimulating(true);
     setHasSimulated(true);
+    setSimAllowTwoConsecutiveBench(allowTwoConsecutiveBench);
     setTimeout(() => {
-      const out = balanceTeamsOptions(players, numTeams, { neverScaleGoalkeepers, separatePairs });
+      const out = balanceTeamsOptions(players, numTeams, { neverScaleGoalkeepers, separatePairs, allowTwoConsecutiveBench });
       const report = getLastBalanceRunReport();
       setResults(out);
       setResultIdx(0);
-      setInfeasibilityMessage(out.length === 0 ? (report?.feasibility.message ?? null) : null);
+      // Duas causas de "lista vazia" possíveis (Fase 5 vs Fase 6+, ver
+      // `BalanceRunReport`): encaixe de POSIÇÃO (`feasibility`) ou regra de
+      // ROTAÇÃO DO BANCO (`benchInfeasibility`) — nunca as duas ao mesmo
+      // tempo (a checagem de posição roda ANTES de sequer gerar divisões).
+      setInfeasibilityMessage(out.length === 0 ? (report?.feasibility.message ?? report?.benchInfeasibility?.message ?? null) : null);
       setCandidatesEvaluated(report?.candidatesEvaluated ?? null);
       setIsSimulating(false);
     }, 50);
@@ -174,6 +195,18 @@ export function SimulationTab() {
                   <input type="checkbox" checked={neverScaleGoalkeepers} onChange={(e) => setNeverScaleGoalkeepers(e.target.checked)} />
                   <span style={{ fontSize: '0.95rem' }}>Não escalar goleiros (emprestado)</span>
                 </label>
+                <label className="checkbox-group">
+                  <input type="checkbox" checked={allowTwoConsecutiveBench} onChange={(e) => setAllowTwoConsecutiveBench(e.target.checked)} />
+                  <span style={{ fontSize: '0.95rem' }}>
+                    Permitir jogadores ficarem duas vezes seguidas no banco
+                  </span>
+                </label>
+                {allowTwoConsecutiveBench && (
+                  <p className={styles.teamsWarning} style={{ marginTop: -4 }}>
+                    Exceção pontual: sem isso, uma divisão só é aceita se ninguém repetir banco em rodadas seguidas.
+                    Com isso marcado, quem sentar 2x seguidas fica de fora do banco pelas 6 rodadas seguintes.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -272,12 +305,12 @@ export function SimulationTab() {
                 ⚠️ {current.goalkeeperWarnings.join(' ')}
               </p>
             )}
-            {current.benchWarnings.length > 0 && (
-              <p className={styles.errorHint} style={{ marginBottom: 12 }}>
-                ⚠️ {current.benchWarnings.join(' ')}
-              </p>
-            )}
-            {current.teams.map((t) => <TeamBlock key={t.id} team={t} />)}
+            {current.teams.map((t) => (
+              <TeamBlock
+                key={t.id} team={t} totalGames={gamesForTeamCount(current.teams.length)}
+                allowTwoConsecutiveBench={simAllowTwoConsecutiveBench}
+              />
+            ))}
           </>
         )}
 

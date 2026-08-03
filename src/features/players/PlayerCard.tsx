@@ -56,17 +56,31 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
               <Shuffle size={11} /> Coringa (qualquer posição)
             </span>
           ) : (
-            player.acceptedPositions
-              .filter((e): e is { position: LinePosition; enabled: boolean } => e.position !== BOX_TO_BOX)
-              .map((e, i) => (
+            <>
+              {player.acceptedPositions
+                .filter((e): e is { position: LinePosition; enabled: boolean } => e.position !== BOX_TO_BOX)
+                .map((e, i) => (
+                  <span
+                    key={e.position}
+                    className={`${styles.posChip} ${e.enabled ? styles.posChipEnabled : styles.posChipDisabled}`}
+                    title={
+                      e.enabled
+                        ? (player.positionOrderIndifferent ? 'Sem preferência de ordem entre as habilitadas' : `${i + 1}ª preferência`)
+                        : `${i + 1}ª preferência — desativada (não entra no balanceador)`
+                    }
+                  >
+                    {LINE_POSITIONS[e.position].label}
+                  </span>
+                ))}
+              {player.positionOrderIndifferent && (
                 <span
-                  key={e.position}
-                  className={`${styles.posChip} ${e.enabled ? styles.posChipEnabled : styles.posChipDisabled}`}
-                  title={e.enabled ? `${i + 1}ª preferência` : `${i + 1}ª preferência — desativada (não entra no balanceador)`}
+                  className={`${styles.posChip} ${styles.posChipBoxToBox}`}
+                  title="Joga em qualquer uma das posições marcadas acima, sem preferência de ordem entre elas"
                 >
-                  {LINE_POSITIONS[e.position].label}
+                  Ordem indiferente
                 </span>
-              ))
+              )}
+            </>
           )}
         </div>
 

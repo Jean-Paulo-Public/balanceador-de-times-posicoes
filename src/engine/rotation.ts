@@ -9,13 +9,16 @@
 //    primeiro não-atacante da fila e move pra frente, preservando a ordem
 //    relativa dos demais. Se não existir nenhum não-atacante apto, avisa
 //    explicitamente (não escala um atacante em silêncio).
-//  - Banco: prioridade (a) HARD — quem sentou na rodada anterior joga na
-//    próxima (ninguém fica dois jogos seguidos fora); (b) entre os elegíveis a
-//    sentar, vão pro banco os que sentaram MENOS vezes até ali (contagem
-//    acumulada); (c) desempate por MENOR IMPACTO (maior fit total do time
-//    resultante). Lógica pura em `benchRotation.ts` (`chooseBenchGroup`) — se
-//    a regra (a) travar, não relaxa em silêncio: devolve aviso nomeando quem
-//    ficou preso (ver `goalkeeperWarning`/`benchWarning`).
+//  - Banco: prioridade (a) HARD e SEM EXCEÇÃO DE TAMANHO — ninguém fica dois
+//    jogos seguidos no banco, ponto (a antiga regra condicional ao tamanho do
+//    banco foi REMOVIDA); (b) entre os elegíveis a sentar, vão pro banco os
+//    que sentaram MENOS vezes até ali (contagem acumulada); (c) desempate por
+//    MENOR IMPACTO (maior fit total do time resultante). Lógica pura em
+//    `benchRotation.ts` (`chooseBenchGroup`) — se a regra (a) travar NUMA
+//    RODADA, a divisão inteira é INVIÁLIDA (`benchRuleBroken`), a menos que a
+//    exceção do checkbox esteja ligada (`allowTwoConsecutive`, ver
+//    `benchRotation.ts`). Não relaxa mais em silêncio nem com aviso — quem
+//    chama (`balance.ts`) precisa DESCARTAR a divisão dos resultados.
 //  - A formação (sistema tático) é reinferida a cada jogo via `chooseBestSystem`
 //    (húngaro) — cada jogo pode escolher um sistema diferente pra quem está em
 //    campo naquele jogo.
@@ -47,8 +50,17 @@ export interface TeamSchedule {
   constant: boolean;
   /** Aviso explícito quando a regra "Jogo 1 sem atacante no gol" não pôde ser satisfeita. */
   goalkeeperWarning: string | null;
-  /** Aviso explícito quando a regra "ninguém repete banco em rodadas seguidas" (banco pequeno) não pôde ser satisfeita nalguma rodada. */
-  benchWarning: string | null;
+  /**
+   * true quando, em alguma rodada, a regra "ninguém fica 2 jogos seguidos no
+   * banco" (e a exceção do checkbox, se ligada) NÃO pôde ser cumprida — a
+   * divisão inteira é INVIÁLIDA e deve ser DESCARTADA (não é mais um aviso
+   * informativo que "segue" — ver `chooseBenchGroup` em benchRotation.ts).
+   */
+  benchRuleBroken: boolean;
+  /** Nº de jogadores de linha disponíveis pro rodízio de banco deste time (outfielders) — só pra compor a mensagem de bloqueio quando `benchRuleBroken`. */
+  benchOutfielders: number;
+  /** Vagas de banco por rodada deste time — idem. */
+  benchSlots: number;
 }
 
 /**
@@ -72,7 +84,19 @@ export const applyGame1GoalkeeperRule = (keepersBestFirst: Player[]): { queue: P
   return { queue: [chosen, ...rest], warning: null };
 };
 
-export const buildTeamSchedule = (team: BalancedTeam, totalGames = 6, cache?: FormationCache): TeamSchedule => {
+/**
+ * Quantos jogos o rodízio simula, conforme o nº de times (regra do dono):
+ * com apenas DOIS times a pelada rende mais jogos, então simula 9; com 3 ou
+ * mais, segue em 6. Os 3 jogos extras entram na MÉDIA das métricas igual aos
+ * outros — não são um apêndice de exibição.
+ * Exportada para a UI usar exatamente a mesma regra do custo (senão os
+ * campinhos mostrariam um nº de jogos diferente do que foi balanceado).
+ */
+export const gamesForTeamCount = (numTeams: number): number => (numTeams === 2 ? 9 : 6);
+
+export const buildTeamSchedule = (
+  team: BalancedTeam, totalGames = 6, cache?: FormationCache, allowTwoConsecutive = false,
+): TeamSchedule => {
   const roster: Player[] = [
     ...team.slots.map((s) => s.player),
     ...(team.goalkeeper ? [team.goalkeeper] : []),
@@ -100,24 +124,41 @@ export const buildTeamSchedule = (team: BalancedTeam, totalGames = 6, cache?: Fo
   };
 
   // Sem variação possível: 1 goleiro (ou nenhum) e sem banco.
-  if (k <= 1 && benchCount === 0) return { games: [baseLineup], constant: true, goalkeeperWarning, benchWarning: null };
+  if (k <= 1 && benchCount === 0) {
+    return {
+      games: [baseLineup], constant: true, goalkeeperWarning,
+      benchRuleBroken: false, benchOutfielders: outfielders.length, benchSlots: benchCount,
+    };
+  }
 
   const games: GameLineup[] = [];
   const benchCounts = new Map<string, number>(outfielders.map((p) => [p.id, 0]));
   let benchedLastRound = new Set<string>();
-  let benchWarning: string | null = null;
+  const exceptionSpentAtRound = new Map<string, number>();
+  let benchRuleBroken = false;
   for (let g = 0; g < totalGames; g++) {
     const goalie = fielded && k > 0 ? keepers[g % k] : null;
     const lineKeepers = keepers.filter((p) => p !== goalie);
-    const { benched, warning } = chooseBenchGroup({
+    const { benched, spentExceptionIds, impossible } = chooseBenchGroup({
       outfielders,
       benchCount,
       benchCounts,
       benchedLastRound,
       alwaysOnField: lineKeepers,
       cache,
+      allowTwoConsecutive,
+      round: g,
+      exceptionSpentAtRound,
     });
-    if (warning && !benchWarning) benchWarning = warning;
+    if (impossible) {
+      // Divisão inviável — não faz sentido manter o estado de banco coerente
+      // daqui pra frente (será descartada por `balance.ts`); registra um
+      // jogo-placeholder só pra manter o array no tamanho esperado.
+      benchRuleBroken = true;
+      games.push({ ...baseLineup, game: g + 1 });
+      continue;
+    }
+    for (const id of spentExceptionIds) exceptionSpentAtRound.set(id, g);
     const benchedSet = new Set(benched.map((p) => p.id));
     for (const p of benched) benchCounts.set(p.id, (benchCounts.get(p.id) ?? 0) + 1);
     benchedLastRound = benchedSet;
@@ -150,6 +191,7 @@ export const buildTeamSchedule = (team: BalancedTeam, totalGames = 6, cache?: Fo
   const sig = (g: GameLineup): string =>
     [g.goalkeeperName ?? '', ...g.slots.map((s) => s.player.name).sort(), '#', ...[...g.benchNames].sort()].join('|');
   const allSame = games.every((g) => sig(g) === sig(games[0]));
-  if (allSame) return { games: [games[0]], constant: true, goalkeeperWarning, benchWarning };
-  return { games, constant: false, goalkeeperWarning, benchWarning };
+  const scheduleResult = { goalkeeperWarning, benchRuleBroken, benchOutfielders: outfielders.length, benchSlots: benchCount };
+  if (allSame) return { games: [games[0]], constant: true, ...scheduleResult };
+  return { games, constant: false, ...scheduleResult };
 };

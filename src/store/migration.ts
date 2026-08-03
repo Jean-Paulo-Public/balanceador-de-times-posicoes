@@ -31,6 +31,7 @@ interface RawPlayer {
   handicapPct?: unknown;
   acceptedPositions?: unknown;
   positionOverrides?: unknown;
+  positionOrderIndifferent?: unknown;
 }
 
 const isValidPositionValue = (v: unknown): v is PositionPreference =>
@@ -43,13 +44,14 @@ const isValidPositionValue = (v: unknown): v is PositionPreference =>
  * de invalidar a lista inteira — preserva a ORDEM das entradas restantes.
  * `BOX_TO_BOX` nunca é desabilitado (não expõe toggle): `enabled` recebido
  * pra ela é ignorado e forçado a `true`.
- * Casos que caem no default `[{ position: BOX_TO_BOX, enabled: true }]`:
+ * Devolve `undefined` (e quem chama DESCARTA o registro inteiro — NÃO existe
+ * default de coringa; ver a nota do bug em `normalizePlayer`) quando:
  *  - entrada bruta não é array, ou é array vazio;
  *  - todas as entradas eram malformadas (lista filtrada ficou vazia);
  *  - NENHUMA entrada restante está habilitada (estado inválido — jogador sem
  *    posição jogável nunca é aceito silenciosamente).
- * (Este default NÃO é "conserto de dado malformado" — é a política de
- * domínio documentada para "sem preferência cadastrada": coringa.)
+ * `BOX_TO_BOX` só existe num jogador se ELE estiver gravado assim no dado: é
+ * escolha manual do usuário no cadastro, nunca inferida aqui.
  */
 export const parseAcceptedPositions = (x: unknown): PositionPreferenceEntry[] | undefined => {
   if (!Array.isArray(x) || x.length === 0) return undefined;
@@ -58,8 +60,14 @@ export const parseAcceptedPositions = (x: unknown): PositionPreferenceEntry[] | 
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue; // descarta entrada malformada
     const { position, enabled } = item as { position?: unknown; enabled?: unknown };
     if (!isValidPositionValue(position)) continue; // descarta
-    const isBox = position === BOX_TO_BOX;
-    out.push({ position, enabled: isBox ? true : (typeof enabled === 'boolean' ? enabled : true) });
+    // BUG CORRIGIDO: aqui o BOX_TO_BOX tinha `enabled` FORÇADO a `true`
+    // ("coringa nunca é desabilitado"). Mas o PlayerForm grava a entrada do
+    // coringa com `enabled: false` exatamente para dizer "este jogador NÃO é
+    // coringa" — ela existe na lista só pra preservar a ordem. Com o valor
+    // forçado, toda reidratação do localStorage transformava o ELENCO INTEIRO em
+    // coringa e o sistema de posições era ignorado por completo. O `enabled`
+    // gravado é respeitado como em qualquer outra entrada.
+    out.push({ position, enabled: typeof enabled === 'boolean' ? enabled : true });
   }
   if (out.length === 0) return undefined;
   if (!out.some((e) => e.enabled)) return undefined; // todas desabilitadas = sem posição jogável
@@ -94,6 +102,16 @@ export const parseGk = (x: unknown): number | null | undefined => {
 /** `handicapPct` bruto: number clampeado 0–100, ou `undefined` se ausente/inválido. */
 export const parseHandicapPct = (x: unknown): number | undefined =>
   typeof x === 'number' && !Number.isNaN(x) ? Math.max(0, Math.min(100, Math.round(x))) : undefined;
+
+/**
+ * `positionOrderIndifferent` bruto: campo COSMÉTICO/opcional (mesmo padrão de
+ * `handicapPct`/`positionOverrides`) — NÃO segue a regra estrita de
+ * `attributes`/`gk`/`acceptedPositions` (tipo errado nunca descarta o
+ * jogador, só omite o campo). Aceita apenas `boolean`; qualquer outro tipo
+ * (string, number, objeto etc.) devolve `undefined` — campo ausente/`false`.
+ */
+export const parsePositionOrderIndifferent = (x: unknown): boolean | undefined =>
+  typeof x === 'boolean' ? x : undefined;
 
 /**
  * Valida um `positionOverrides` bruto (modelo v3.1 — exceções de atributo por
@@ -149,6 +167,16 @@ export const normalizePlayer = (raw: RawPlayer | Player | null | undefined): Pla
   const parsedGk = parseGk(r.gk);
   if (parsedGk === undefined) return null; // gk ausente/inválido — descartado
 
+  // BUG CORRIGIDO: aqui havia `parseAcceptedPositions(...) ?? [{ BOX_TO_BOX }]`.
+  // Como isto roda em TODA reidratação do localStorage, qualquer dado gravado por
+  // versão anterior (em que `acceptedPositions` não existia) caía no default e o
+  // ELENCO INTEIRO virava coringa em silêncio — o sintoma "depois de um tempo sem
+  // entrar, todos os jogadores viraram coringa". Isso violava a regra do dono:
+  // nenhum jogador vira BOX_TO_BOX sem ele marcar isso no cadastro. Agora o campo
+  // é ESTRITO como `attributes` e `gk`: não validou, descarta o registro.
+  const acceptedPositions = parseAcceptedPositions(r.acceptedPositions);
+  if (!acceptedPositions) return null;
+
   const player: Player = {
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
     name: typeof r.name === 'string' && r.name ? r.name : 'Jogador',
@@ -157,12 +185,14 @@ export const normalizePlayer = (raw: RawPlayer | Player | null | undefined): Pla
     position: asPosition(r.position),
     attributes,
     gk: parsedGk,
-    acceptedPositions: parseAcceptedPositions(r.acceptedPositions) ?? [{ position: BOX_TO_BOX, enabled: true }],
+    acceptedPositions,
   };
   const handicapPct = parseHandicapPct(r.handicapPct);
   if (handicapPct !== undefined) player.handicapPct = handicapPct;
   const positionOverrides = parsePositionOverrides(r.positionOverrides);
   if (positionOverrides !== undefined) player.positionOverrides = positionOverrides;
+  const positionOrderIndifferent = parsePositionOrderIndifferent(r.positionOrderIndifferent);
+  if (positionOrderIndifferent !== undefined) player.positionOrderIndifferent = positionOrderIndifferent;
   return player;
 };
 

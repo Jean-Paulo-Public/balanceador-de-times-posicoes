@@ -3,7 +3,7 @@
 // vertical (linhas), com o banco de cada time no topo. Times sem variação
 // mostram "Jogo 1 ao 6" e o resto fica preto. Ver Design v2, Seção 13.
 
-import { buildTeamSchedule, type BalanceResult } from '../../engine';
+import { buildTeamSchedule, gamesForTeamCount, type BalanceResult } from '../../engine';
 
 const ROLE_SHORT: Record<string, string> = {
   FIXO: 'FIX', LATERAL: 'LAT', VOLANTE: 'VOL', ALA: 'ALA',
@@ -65,11 +65,14 @@ const drawField = (
 
 export const buildFieldMapsImage = async (result: BalanceResult): Promise<Blob> => {
   const teams = result.teams;
-  const schedules = teams.map((t) => buildTeamSchedule(t, 6));
-  // Só gera as 6 linhas se ALGUM time varia (banco/goleiros pra revezar). Se ninguém
-  // varia, gera 1 linha só ("Jogo 1 ao 6") — nada de 6 linhas nem células pretas.
+  const totalGames = gamesForTeamCount(teams.length);
+  const schedules = teams.map((t) => buildTeamSchedule(t, totalGames));
+  // Só gera uma linha por jogo se ALGUM time varia (banco/goleiros pra revezar).
+  // Se ninguém varia, gera 1 linha só ("Jogo 1 ao N") — nada de linhas de
+  // células pretas. `totalGames` é 9 com 2 times e 6 com 3+ (nunca fixo em 6,
+  // senão a exportação perderia os 3 jogos extras do caso de 2 times).
   const anyVariation = schedules.some((s) => !s.constant);
-  const rows = anyVariation ? 6 : 1;
+  const rows = anyVariation ? totalGames : 1;
   const cols = teams.length;
   const cellW = 190;
   const cellH = 224;
@@ -113,7 +116,7 @@ export const buildFieldMapsImage = async (result: BalanceResult): Promise<Blob> 
       let title = '';
       let subtitle = '';
       if (sch.constant) {
-        if (r === 0) { game = sch.games[0]; title = 'Jogo 1 ao 6'; }
+        if (r === 0) { game = sch.games[0]; title = `Jogo 1 ao ${totalGames}`; }
       } else {
         game = sch.games[r] ?? null;
         title = 'Jogo ' + (r + 1);

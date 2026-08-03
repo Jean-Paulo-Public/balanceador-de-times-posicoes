@@ -62,6 +62,26 @@ export interface Player {
   acceptedPositions: PositionPreferenceEntry[];
   /** Exceções de atributo por posição de linha (modelo v3.1). Ver `AttributeOverrides`. */
   positionOverrides?: AttributeOverrides;
+  /**
+   * "Tanto faz a ordem" — zera a PENALIDADE de profundidade da lista
+   * `acceptedPositions`, sem afrouxar a CAPACIDADE (a restrição hard continua
+   * sendo exatamente essa lista). Não confundir com `BOX_TO_BOX`:
+   *
+   *  - `acceptedPositions` (sem esta flag) = lista ORDENADA: as posições
+   *    habilitadas são as únicas jogáveis (capacidade) E a ordem entre elas
+   *    custa caro sair (preferência) — é o comportamento default.
+   *  - `positionOrderIndifferent: true` = a MESMA capacidade (só as posições
+   *    habilitadas na lista são jogáveis — uma posição fora da lista, ou
+   *    desabilitada, continua proibitiva) mas a ORDEM deixa de custar: o
+   *    solver escolhe livremente entre as habilitadas sem penalizar quem não
+   *    está no topo.
+   *  - `BOX_TO_BOX` = joga em QUALQUER posição do jogo — libera a própria
+   *    capacidade (não é isto).
+   *
+   * Ausente/`false` = comportamento atual (penalidade por profundidade nas
+   * habilitadas). Ver `identityCost` em engine/formationModel.ts.
+   */
+  positionOrderIndifferent?: boolean;
 }
 
 export interface TeamSlotPlayer {

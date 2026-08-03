@@ -220,3 +220,53 @@ describe('identityCost — fórmula da penalidade de preferência (profundidade 
     expect(costPivo).toBeGreaterThan(0);
   });
 });
+
+describe('identityCost — positionOrderIndifferent ("tanto faz a ordem")', () => {
+  const neutral = A({});
+
+  it('com a flag ligada, a última posição habilitada custa o MESMO que a primeira (sem penalidade de profundidade)', () => {
+    // Torres: só ALA, SEGUNDO_ATACANTE, MEIA_ATACANTE habilitadas, nessa ordem.
+    const torres: Player = {
+      ...pref(neutral, ['ALA', 'SEGUNDO_ATACANTE', 'MEIA_ATACANTE']),
+      positionOrderIndifferent: true,
+    };
+    const costFirst = identityCost(torres, 'ALA');              // idx 0
+    const costLast = identityCost(torres, 'MEIA_ATACANTE');      // idx 2 (último habilitado)
+    // Com a flag ligada, custo = (100 - fit) puro em ambas — nenhuma soma de
+    // PREFERENCE_PENALTY_SCALE, mesmo o último estando na profundidade máxima.
+    const fitAla = 100 - identityCost(bx(neutral), 'ALA'); // custo de um coringa puro = 100 - fit
+    const fitMeiaAtacante = 100 - identityCost(bx(neutral), 'MEIA_ATACANTE');
+    expect(costFirst).toBeCloseTo(100 - fitAla, 6);
+    expect(costLast).toBeCloseTo(100 - fitMeiaAtacante, 6);
+  });
+
+  it('com a flag ligada, posição FORA da lista habilitada continua PROIBITIVA (a restrição hard não cede)', () => {
+    const torres: Player = {
+      ...pref(neutral, ['ALA', 'SEGUNDO_ATACANTE', 'MEIA_ATACANTE']),
+      positionOrderIndifferent: true,
+    };
+    expect(identityCost(torres, 'FIXO')).toBeGreaterThanOrEqual(1_000_000); // nunca escalado de FIXO
+    expect(identityCost(torres, 'VOLANTE')).toBeGreaterThanOrEqual(1_000_000);
+  });
+
+  it('com a flag ligada, posição da lista mas DESABILITADA continua proibitiva', () => {
+    const p: Player = {
+      ...withEntries(neutral, [
+        { position: 'ALA', enabled: true },
+        { position: 'VOLANTE', enabled: false },
+      ]),
+      positionOrderIndifferent: true,
+    };
+    expect(identityCost(p, 'VOLANTE')).toBeGreaterThanOrEqual(1_000_000);
+  });
+
+  it('com a flag DESLIGADA (ausente), o comportamento é idêntico ao de hoje — nenhuma regressão', () => {
+    const semFlag = pref(neutral, ['ALA', 'SEGUNDO_ATACANTE', 'MEIA_ATACANTE']);
+    const comFlagFalse: Player = { ...semFlag, positionOrderIndifferent: false };
+    // idx2 (último habilitado, lista de 3) paga a penalidade cheia de profundidade relativa 1,0.
+    const expectedLast = (100 - (100 - identityCost(bx(neutral), 'MEIA_ATACANTE'))) + PREFERENCE_PENALTY_SCALE * 1;
+    expect(identityCost(semFlag, 'MEIA_ATACANTE')).toBeCloseTo(expectedLast, 6);
+    expect(identityCost(comFlagFalse, 'MEIA_ATACANTE')).toBeCloseTo(expectedLast, 6);
+    expect(identityCost(comFlagFalse, 'MEIA_ATACANTE')).toBeCloseTo(identityCost(semFlag, 'MEIA_ATACANTE'), 9);
+  });
+});

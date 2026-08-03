@@ -1,40 +1,48 @@
 // Escolha do BANCO por rodada (Fase 6, regra do dono) — FUNÇÃO PURA e
 // testável, separada da montagem do cronograma (`rotation.ts`). Prioridade:
 //
-//  (a) HARD, mas CONDICIONAL AO TAMANHO DO PRÓPRIO BANCO DO TIME NAQUELA
-//      RODADA (ajuste do dono): com banco pequeno (<= `HARD_NO_REPEAT_MAX_BENCH_SIZE`,
-//      ver constante abaixo), quem ficou no banco na rodada anterior JOGA
-//      nesta rodada — ninguém fica dois jogos seguidos fora. Com banco maior
-//      (>= o limiar + 1) essa restrição é IMPOSSÍVEL de sustentar na prática
-//      (ou trava, ou vira um vaivém sem sentido) e por isso é RELAXADA:
-//      repetir banco em rodadas consecutivas passa a ser permitido. O
-//      limiar é POR TIME e POR RODADA — cada time avalia com o PRÓPRIO nº de
-//      reservas naquela rodada, nunca uma contagem global do elenco/demais
-//      times.
-//  (b) Entre os elegíveis a sentar (quem NÃO sentou na rodada anterior — ou,
-//      quando (a) foi relaxada, TODOS os outfielders), vão pro banco os que
-//      sentaram MENOS VEZES até aqui (contagem acumulada). ISSO VALE SEMPRE,
-//      mesmo com (a) relaxada: relaxar (a) não é licença pra alguém sentar 4
-//      vezes enquanto outro senta 1 — (b) é o que segue garantindo a
-//      justiça/equilíbrio da distribuição de banco ao longo dos 6 jogos.
+//  (a) HARD, SEM EXCEÇÃO DE TAMANHO (regra revisada — a antiga condicionava a
+//      dureza da regra ao tamanho do próprio banco do time; isso foi
+//      REMOVIDO): ninguém pode ficar mais de um jogo seguido no banco. Vale
+//      SEMPRE, independentemente de quantos jogadores o banco daquele time
+//      tem naquela rodada, ou de quantos times existem na pelada.
+//
+//      Quando a regra estrita for IMPOSSÍVEL de cumprir nesta rodada (não
+//      sobra gente suficiente que não acabou de sentar), a divisão inteira é
+//      INVIÁLIDA — `chooseBenchGroup` devolve `impossible: true` e não cede a
+//      regra em silêncio nem com um aviso informativo (comportamento antigo);
+//      quem chama (`rotation.ts` → `balance.ts`) precisa DESCARTAR essa
+//      divisão dos resultados, nunca apresentá-la ao usuário.
+//
+//      Exceção OPCIONAL (checkbox "Permitir jogadores ficarem duas vezes
+//      seguidas no banco", ligado pelo usuário, NUNCA por padrão): quando
+//      ligada e a regra estrita não fecha o banco, um jogador pode sentar
+//      pela 2ª vez CONSECUTIVA (paga um "crédito"). Enquanto o crédito está
+//      ativo (`BENCH_EXCEPTION_COOLDOWN_ROUNDS` rodadas SEGUINTES à rodada em
+//      que sentou a 2ª vez), esse jogador fica INELEGÍVEL ao banco — sempre
+//      em campo — e SÓ volta a poder sentar depois que a janela expira (não é
+//      permanente: passada a janela, ele volta a ser elegível normalmente,
+//      inclusive podendo gastar o crédito de novo mais adiante se for
+//      necessário). Mesmo com a exceção ligada, a regra estrita continua
+//      sendo a PREFERIDA: só usa o crédito de alguém quando faltam vagas
+//      estritamente elegíveis pra fechar o banco daquela rodada — nunca por
+//      "conveniência" quando a regra estrita já fecharia sozinha.
+//
+//  (b) Entre os elegíveis a sentar (quem NÃO sentou na rodada anterior e não
+//      está em cooldown de exceção — ou, entre os repetentes quando a exceção
+//      é necessária), vão pro banco os que sentaram MENOS VEZES até aqui
+//      (contagem acumulada). ISSO VALE SEMPRE — a janela de cooldown só
+//      remove o jogador do CONJUNTO elegível durante a janela; não zera nem
+//      mexe na contagem acumulada dele.
 //  (c) Desempate: escolhe a troca de MENOR IMPACTO — a combinação (dentre os
 //      empatados em (b)) cujo time resultante em campo tem o MAIOR fit total
 //      (`chooseBestSystem`), ou seja, preserva melhor o equilíbrio/sistema
 //      tático. Heurística (não é ótimo global): avalia só as combinações
 //      dentro do grupo empatado na fronteira de corte.
-//
-// Se a regra (a) — QUANDO APLICÁVEL (banco pequeno) — tornar IMPOSSÍVEL
-// escalar (elegíveis a sentar < vagas de banco), NÃO relaxa em silêncio: cede
-// a regra hard só o mínimo necessário pra fechar o banco, mas devolve um
-// aviso nomeando quem ficou preso (mesmo padrão de
-// `checkPositionFeasibility`/`applyGame1GoalkeeperRule` — nunca falha
-// silenciosamente). Esse aviso NUNCA dispara quando (a) já foi relaxada pelo
-// tamanho do banco — nesse caso não há regra hard pra travar.
 
 import type { Player } from '../domain/types';
 import { chooseBestSystem, type FormationCache } from './formationModel';
 import { getCombinations } from './combinatorics';
-import { joinNames } from './feasibility';
 
 export interface BenchRoundContext {
   /** Outfielders elegíveis a banco/campo nesta divisão (mesmo conjunto nas 6 rodadas). */
@@ -43,7 +51,7 @@ export interface BenchRoundContext {
   benchCount: number;
   /** Contagem acumulada de banco por jogador (id -> nº de vezes já sentou antes desta rodada). */
   benchCounts: ReadonlyMap<string, number>;
-  /** Ids que sentaram na rodada IMEDIATAMENTE anterior (regra hard: jogam agora). */
+  /** Ids que sentaram na rodada IMEDIATAMENTE anterior (regra hard: jogam agora, SALVO uso da exceção). */
   benchedLastRound: ReadonlySet<string>;
   /**
    * Outros jogadores de linha que SEMPRE jogam nesta rodada (ex.: goleiros
@@ -53,23 +61,54 @@ export interface BenchRoundContext {
   alwaysOnField?: Player[];
   /** Cache de sistema/custo (ver `FormationCache` em formationModel.ts), escopo = 1 execução de balanceamento. */
   cache?: FormationCache;
+  /**
+   * Checkbox do dono (default false, NÃO persistido — ver `usePlayerStore`):
+   * permite sentar 2x seguidas pagando um "crédito" com cooldown (ver topo do
+   * arquivo). Sem isso ligado, a regra (a) é ESTRITA e sem exceção alguma.
+   */
+  allowTwoConsecutive?: boolean;
+  /** Rodada atual (0-based) — necessária pra calcular a janela de cooldown da exceção. Default 0. */
+  round?: number;
+  /**
+   * id -> rodada (0-based) em que o jogador gastou o crédito da exceção
+   * (sentou pela 2ª vez seguida). Enquanto `round` estiver dentro da janela
+   * de `BENCH_EXCEPTION_COOLDOWN_ROUNDS` rodadas SEGUINTES, ele é inelegível.
+   * Mantida e atualizada por quem chama (`rotation.ts`), entre rodadas.
+   */
+  exceptionSpentAtRound?: ReadonlyMap<string, number>;
 }
 
 export interface BenchRoundResult {
   benched: Player[];
-  /** null quando a escolha respeitou a regra hard (a) (ou ela nem se aplicava); nomeia quem travou, senão. */
-  warning: string | null;
+  /**
+   * Ids que, NESTA escolha, sentaram pela 2ª vez seguida (gastaram o crédito
+   * da exceção agora). Quem chama deve registrar a rodada atual para eles em
+   * `exceptionSpentAtRound` dali em diante (inicia o cooldown).
+   */
+  spentExceptionIds: string[];
+  /**
+   * true quando NEM a regra estrita NEM a exceção (se ligada) deram pra
+   * fechar o banco desta rodada respeitando "ninguém repete" — a divisão
+   * inteira é INVIÁLIDA e deve ser DESCARTADA dos resultados (não é mais um
+   * aviso informativo que "segue" — ver `rotation.ts`/`balance.ts`).
+   */
+  impossible: boolean;
 }
 
 /**
- * Limiar (nº de vagas de banco NAQUELE time NAQUELA rodada) até o qual a
- * regra hard (a) — "ninguém repete banco em rodadas seguidas" — é OBRIGATÓRIA.
- * Acima disso (banco maior), a regra é RELAXADA (permite repetir), porque com
- * banco grande sustentar "todo mundo entra toda rodada" ou é infactível ou
- * vira um vaivém sem sentido (pedido do dono). Constante nomeada de propósito
- * — é regra de domínio calibrável, não deve virar número mágico espalhado.
+ * Duração (em rodadas) do cooldown de inelegibilidade ao banco depois que um
+ * jogador gasta o crédito da exceção (senta 2x seguidas). Regra de domínio
+ * calibrável pelo dono — nomeada de propósito, não deve virar número mágico
+ * espalhado. Motivo do valor: isenção "até o fim da simulação" transferia
+ * carga de banco demais pros outros num rodízio de 9 jogos (2 times); 6
+ * rodadas compensa sem virar privilégio permanente. Interage com
+ * `gamesForTeamCount` (ver rotation.ts): com 3+ times o rodízio inteiro tem
+ * só 6 jogos, então na prática o cooldown cobre o resto da simulação mesmo
+ * assim — não é tratado como caso especial, é só o horizonte que muda. Com 2
+ * times (9 jogos), alguém que gasta o crédito nas rodadas 1–2 fica inelegível
+ * nas rodadas 3–8 e volta a poder sentar na rodada 9.
  */
-export const HARD_NO_REPEAT_MAX_BENCH_SIZE = 2;
+export const BENCH_EXCEPTION_COOLDOWN_ROUNDS = 6;
 
 /**
  * Teto de combinações realmente avaliadas (via `chooseBestSystem`, caro — 4
@@ -148,34 +187,70 @@ const pickByCountThenImpact = (
 };
 
 export const chooseBenchGroup = (ctx: BenchRoundContext): BenchRoundResult => {
-  const { outfielders, benchCount, benchCounts, benchedLastRound, alwaysOnField = [], cache } = ctx;
-  if (benchCount <= 0) return { benched: [], warning: null };
+  const {
+    outfielders, benchCount, benchCounts, benchedLastRound, alwaysOnField = [], cache,
+    allowTwoConsecutive = false, round = 0, exceptionSpentAtRound = new Map<string, number>(),
+  } = ctx;
+  if (benchCount <= 0) return { benched: [], spentExceptionIds: [], impossible: false };
 
-  // Regra (a) é CONDICIONAL ao tamanho do banco DESTE time NESTA rodada — não
-  // uma contagem global do elenco. Banco grande: relaxa a proibição de
-  // repetir, mas (b) — a contagem acumulada — continua valendo pra manter a
-  // distribuição justa (ver comentário de topo do arquivo).
-  if (benchCount > HARD_NO_REPEAT_MAX_BENCH_SIZE) {
-    const benched = pickByCountThenImpact(outfielders, benchCount, benchCounts, alwaysOnField, cache);
-    return { benched, warning: null };
+  // Janela de cooldown da exceção: jogador inelegível ao banco enquanto
+  // `round` estiver dentro das `BENCH_EXCEPTION_COOLDOWN_ROUNDS` rodadas
+  // SEGUINTES à rodada em que gastou o crédito.
+  const onCooldown = (p: Player): boolean => {
+    const spentAt = exceptionSpentAtRound.get(p.id);
+    if (spentAt == null) return false;
+    const delta = round - spentAt;
+    return delta >= 1 && delta <= BENCH_EXCEPTION_COOLDOWN_ROUNDS;
+  };
+
+  const cooling = outfielders.filter((p) => onCooldown(p));
+  // Regra (a) ESTRITA (sempre a preferida, com ou sem a exceção ligada):
+  // elegível a sentar é quem não sentou na rodada anterior e não está em
+  // cooldown da exceção.
+  const strictEligible = outfielders.filter((p) => !benchedLastRound.has(p.id) && !onCooldown(p));
+  // Quem sentou na rodada anterior (regra hard: joga agora) e não está em
+  // cooldown — precisa entrar no `stayingRest` do desempate (c) pra avaliação
+  // de fit considerar o time de campo COMPLETO (6 jogadores), não só quem
+  // sobra depois de tirar os candidatos a banco.
+  const mustPlayLastRound = outfielders.filter((p) => benchedLastRound.has(p.id) && !onCooldown(p));
+
+  if (strictEligible.length >= benchCount) {
+    const benched = pickByCountThenImpact(
+      strictEligible, benchCount, benchCounts, [...mustPlayLastRound, ...cooling, ...alwaysOnField], cache,
+    );
+    return { benched, spentExceptionIds: [], impossible: false };
   }
 
-  const eligible = outfielders.filter((p) => !benchedLastRound.has(p.id));
-  const mustPlay = outfielders.filter((p) => benchedLastRound.has(p.id));
-
-  if (eligible.length < benchCount) {
-    // Regra hard (a) impossível de cumprir com o elenco atual desta rodada:
-    // cede o mínimo necessário (inclui alguém que acabou de sentar) só pra
-    // fechar o banco, mas AVISA nomeando quem travou — nunca em silêncio.
-    const benched = pickByCountThenImpact(outfielders, benchCount, benchCounts, alwaysOnField, cache);
-    const warning =
-      `Não dá pra respeitar "ninguém fica dois jogos seguidos no banco" com o elenco atual: ` +
-      `${joinNames(mustPlay.map((p) => p.name))} acabou de sentar e precisaria jogar agora, mas só ` +
-      `${eligible.length} jogador(es) elegível(is) sobra(m) para ${benchCount} vaga(s) de banco. ` +
-      `Ative mais jogadores de linha ou reduza o nº de times.`;
-    return { benched, warning };
+  // Regra estrita impossível nesta rodada (não sobra gente suficiente que não
+  // acabou de sentar / não está em cooldown).
+  if (!allowTwoConsecutive) {
+    // Sem a exceção ligada, isso invalida a divisão inteira — não cede mais
+    // em silêncio, nem com aviso: quem chama precisa descartar.
+    return { benched: [], spentExceptionIds: [], impossible: true };
   }
 
-  const benched = pickByCountThenImpact(eligible, benchCount, benchCounts, [...mustPlay, ...alwaysOnField], cache);
-  return { benched, warning: null };
+  // Exceção ligada: amplia o pool aceitando quem sentou na rodada anterior (2ª
+  // vez seguida — gasta o crédito), mas só o MÍNIMO necessário: todos os
+  // estritamente elegíveis são OBRIGATORIAMENTE escalados pro banco (são
+  // menos que `benchCount`, não sobra escolha ali); só o restante vem dos
+  // repetentes, escolhidos por (b)+(c) como de costume.
+  const needed = benchCount - strictEligible.length;
+  const repeaters = outfielders.filter((p) => benchedLastRound.has(p.id) && !onCooldown(p));
+  if (repeaters.length < needed) {
+    // Nem com a exceção dá pra fechar o banco — impossibilidade estrutural
+    // (pool total insuficiente). Também inválida.
+    return { benched: [], spentExceptionIds: [], impossible: true };
+  }
+
+  // ATENÇÃO: `strictEligible` NÃO entra em `stayingRest` aqui — eles TODOS
+  // vão pro banco nesta rodada (são menos que `benchCount`, não sobra
+  // escolha), então não "ficam em campo". Só `cooling`/`alwaysOnField` são
+  // forçados a jogar; os repetentes NÃO escolhidos (fora do `needed`) já são
+  // contabilizados como "ficam" pela própria lógica de `pickByCountThenImpact`
+  // (o pool de onde ela escolhe É `repeaters`).
+  const repeatersChosen = pickByCountThenImpact(
+    repeaters, needed, benchCounts, [...cooling, ...alwaysOnField], cache,
+  );
+  const benched = [...strictEligible, ...repeatersChosen];
+  return { benched, spentExceptionIds: repeatersChosen.map((p) => p.id), impossible: false };
 };
