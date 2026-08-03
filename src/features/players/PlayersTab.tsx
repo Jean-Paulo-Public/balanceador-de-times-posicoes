@@ -3,6 +3,7 @@ import { usePlayerStore } from '../../store/usePlayerStore';
 import { PlayerCard } from './PlayerCard';
 import { PlayerForm } from './PlayerForm';
 import { exportPlayersAsJson, parseImportedPlayers, pickAndImportPlayersFile, supportsNativeFilePicker } from './importExport';
+import { PowerRankingPanel } from './PowerRankingPanel';
 import { UserPlus, Users, Sparkles, Save, FolderOpen } from 'lucide-react';
 import type { Player } from '../../domain/types';
 import styles from './PlayersTab.module.css';
@@ -119,6 +120,8 @@ export function PlayersTab() {
               <span>Repor o elenco de teste automaticamente se a lista ficar vazia</span>
             </label>
             {importError && <div className={styles.errorBox}>{importError}</div>}
+
+            {players.length > 0 && <PowerRankingPanel players={players} />}
 
             <button className={`btn ${styles.addButton}`} onClick={() => setShowForm(true)}>
               <UserPlus size={20} /> Adicionar Jogador

@@ -9,17 +9,22 @@
 //    primeiro não-atacante da fila e move pra frente, preservando a ordem
 //    relativa dos demais. Se não existir nenhum não-atacante apto, avisa
 //    explicitamente (não escala um atacante em silêncio).
-//  - Banco também é uma FILA: um jogador só volta ao banco depois que todos os
-//    não-goleiros passaram pelo banco. Ordem: MENOS habilidosos primeiro
-//    (premiando os melhores com mais tempo em campo).
+//  - Banco: prioridade (a) HARD — quem sentou na rodada anterior joga na
+//    próxima (ninguém fica dois jogos seguidos fora); (b) entre os elegíveis a
+//    sentar, vão pro banco os que sentaram MENOS vezes até ali (contagem
+//    acumulada); (c) desempate por MENOR IMPACTO (maior fit total do time
+//    resultante). Lógica pura em `benchRotation.ts` (`chooseBenchGroup`) — se
+//    a regra (a) travar, não relaxa em silêncio: devolve aviso nomeando quem
+//    ficou preso (ver `goalkeeperWarning`/`benchWarning`).
 //  - A formação (sistema tático) é reinferida a cada jogo via `chooseBestSystem`
 //    (húngaro) — cada jogo pode escolher um sistema diferente pra quem está em
 //    campo naquele jogo.
 
 import type { Player } from '../domain/types';
 import type { BalancedTeam, BalancedSlot } from './balance';
-import { effectiveGk, overallOf, isAttackerPlayer } from './playerModel';
-import { chooseBestSystem, type TacticalSystem } from './formationModel';
+import { effectiveGk, isAttackerPlayer } from './playerModel';
+import { chooseBestSystem, type TacticalSystem, type FormationCache } from './formationModel';
+import { chooseBenchGroup } from './benchRotation';
 
 export interface GameLineup {
   game: number;
@@ -42,6 +47,8 @@ export interface TeamSchedule {
   constant: boolean;
   /** Aviso explícito quando a regra "Jogo 1 sem atacante no gol" não pôde ser satisfeita. */
   goalkeeperWarning: string | null;
+  /** Aviso explícito quando a regra "ninguém repete banco em rodadas seguidas" (banco pequeno) não pôde ser satisfeita nalguma rodada. */
+  benchWarning: string | null;
 }
 
 /**
@@ -65,7 +72,7 @@ export const applyGame1GoalkeeperRule = (keepersBestFirst: Player[]): { queue: P
   return { queue: [chosen, ...rest], warning: null };
 };
 
-export const buildTeamSchedule = (team: BalancedTeam, totalGames = 6): TeamSchedule => {
+export const buildTeamSchedule = (team: BalancedTeam, totalGames = 6, cache?: FormationCache): TeamSchedule => {
   const roster: Player[] = [
     ...team.slots.map((s) => s.player),
     ...(team.goalkeeper ? [team.goalkeeper] : []),
@@ -79,7 +86,6 @@ export const buildTeamSchedule = (team: BalancedTeam, totalGames = 6): TeamSched
   const { queue: keepers, warning: goalkeeperWarning } = applyGame1GoalkeeperRule(keepersBestFirst);
   const k = keepers.length;
   const outfielders = fielded ? roster.filter((p) => !p.isGoalkeeper) : [...roster];
-  const benchQueue = [...outfielders].sort((a, b) => overallOf(a) - overallOf(b)); // pior primeiro
   const onField = fielded ? 7 : 6;
   const benchCount = Math.max(0, n - onField);
 
@@ -94,22 +100,34 @@ export const buildTeamSchedule = (team: BalancedTeam, totalGames = 6): TeamSched
   };
 
   // Sem variação possível: 1 goleiro (ou nenhum) e sem banco.
-  if (k <= 1 && benchCount === 0) return { games: [baseLineup], constant: true, goalkeeperWarning };
+  if (k <= 1 && benchCount === 0) return { games: [baseLineup], constant: true, goalkeeperWarning, benchWarning: null };
 
   const games: GameLineup[] = [];
+  const benchCounts = new Map<string, number>(outfielders.map((p) => [p.id, 0]));
+  let benchedLastRound = new Set<string>();
+  let benchWarning: string | null = null;
   for (let g = 0; g < totalGames; g++) {
     const goalie = fielded && k > 0 ? keepers[g % k] : null;
-    const benched: Player[] = [];
-    for (let i = 0; i < benchCount; i++) benched.push(benchQueue[(g * benchCount + i) % benchQueue.length]);
-    const benchedSet = new Set(benched);
     const lineKeepers = keepers.filter((p) => p !== goalie);
-    const lineOutfielders = outfielders.filter((p) => !benchedSet.has(p));
+    const { benched, warning } = chooseBenchGroup({
+      outfielders,
+      benchCount,
+      benchCounts,
+      benchedLastRound,
+      alwaysOnField: lineKeepers,
+      cache,
+    });
+    if (warning && !benchWarning) benchWarning = warning;
+    const benchedSet = new Set(benched.map((p) => p.id));
+    for (const p of benched) benchCounts.set(p.id, (benchCounts.get(p.id) ?? 0) + 1);
+    benchedLastRound = benchedSet;
+    const lineOutfielders = outfielders.filter((p) => !benchedSet.has(p.id));
     const linePlayers = [...lineKeepers, ...lineOutfielders].slice(0, 6);
     if (linePlayers.length !== 6) {
       games.push({ ...baseLineup, game: g + 1 });
       continue;
     }
-    const inf = chooseBestSystem(linePlayers);
+    const inf = chooseBestSystem(linePlayers, cache);
     const slots: BalancedSlot[] = inf.assignments.map((a) => ({
       player: linePlayers[a.playerIndex],
       role: a.identity,
@@ -132,6 +150,6 @@ export const buildTeamSchedule = (team: BalancedTeam, totalGames = 6): TeamSched
   const sig = (g: GameLineup): string =>
     [g.goalkeeperName ?? '', ...g.slots.map((s) => s.player.name).sort(), '#', ...[...g.benchNames].sort()].join('|');
   const allSame = games.every((g) => sig(g) === sig(games[0]));
-  if (allSame) return { games: [games[0]], constant: true, goalkeeperWarning };
-  return { games, constant: false, goalkeeperWarning };
+  if (allSame) return { games: [games[0]], constant: true, goalkeeperWarning, benchWarning };
+  return { games, constant: false, goalkeeperWarning, benchWarning };
 };

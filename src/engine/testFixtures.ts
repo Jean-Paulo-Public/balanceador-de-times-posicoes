@@ -1,7 +1,6 @@
 import type { Player, Position } from '../domain/types';
 import type { AttrVector } from '../domain/attributes';
-import { clampRating } from '../domain/playerAttributes';
-import { deriveAttributesFromStar, deriveGkFromStar } from '../domain/deriveAttributes';
+import { clampAttr } from '../domain/attributes';
 import { BOX_TO_BOX, allEnabled } from '../domain/positions';
 
 let counter = 0;
@@ -22,33 +21,54 @@ export interface TestTraits {
   lowRecovery?: boolean;
 }
 
-const applyTraits = (attrs: AttrVector, traits: TestTraits | undefined): AttrVector => {
+/** Vetor UNIFORME (0–100): todos os 9 atributos no mesmo valor — o jeito mais
+ * direto de fixture pra um "overall" alvo, já que os pesos de cada OVR somam
+ * 1,00 (ver OVR_WEIGHTS em domain/attributes.ts). */
+const flatAttrs = (overall: number): AttrVector => {
+  const v = clampAttr(overall);
+  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v };
+};
+
+const applyTraits = (attrs: AttrVector, overall: number, traits: TestTraits | undefined): AttrVector => {
   if (!traits) return attrs;
   let out = attrs;
-  // Perfil completo (não incremental) pra garantir isPivot() com folga acima do limiar.
-  if (traits.pivot) out = { FIN: 90, CRI: 55, DRI: 50, DEF: 20, VEL: 40, RCD: 40, INT: 40, MOV: 20, FIS: 85 };
+  // Perfil de pivô (FIN/FIS puxados) com folga acima do limiar de isPivot(),
+  // mas MONOTÔNICO em `overall` (cresce com o overall pedido) — ao contrário
+  // de um perfil fixo, isso permite comparar overallOf() entre dois pivôs
+  // (ex.: pickImprovisedAttacker escolhendo "o pivô de maior overall").
+  if (traits.pivot) {
+    const v = clampAttr(overall);
+    out = {
+      FIN: clampAttr(60 + v * 0.5), CRI: 55, DRI: 50, DEF: 20, VEL: 40,
+      RCD: 40, INT: 40, MOV: 20, FIS: clampAttr(50 + v * 0.4),
+    };
+  }
   if (traits.fast) out = { ...out, VEL: 90 };
   if (traits.goodBuildUp) out = { ...out, CRI: 90 };
   if (traits.lowRecovery) out = { ...out, RCD: 5 };
   return out;
 };
 
+/**
+ * Fixture de jogador: monta os 9 atributos DIRETO na escala 0–100 (vetor
+ * uniforme no valor de `overall`, salvo traços que sobrescrevem alguns
+ * atributos — ver `TestTraits`). Sem estrela, sem derivação: overall 0–100 é
+ * a única escala.
+ */
 export const makePlayer = (
   position: Position,
-  rating: number = 3,
+  overall: number = 60,
   overrides: Partial<Player> & { traits?: TestTraits } = {}
 ): Player => {
   counter += 1;
   const { traits, ...rest } = overrides;
-  const r = clampRating(rating);
-  const attributes = applyTraits(deriveAttributesFromStar(r, position), traits);
+  const attributes = applyTraits(flatAttrs(overall), overall, traits);
   return {
     id: `test-${counter}`,
     name: `${position}-${counter}`,
     active: true,
     isGoalkeeper: false,
     position,
-    rating: r,
     attributes,
     gk: null,
     acceptedPositions: allEnabled([BOX_TO_BOX]),
@@ -56,19 +76,19 @@ export const makePlayer = (
   };
 };
 
-export const makeGoalkeeper = (rating: number = 4, overrides: Partial<Player> = {}): Player =>
-  makePlayer('MEIA', rating, { isGoalkeeper: true, gk: deriveGkFromStar(rating, true), ...overrides });
+export const makeGoalkeeper = (overall: number = 80, overrides: Partial<Player> = {}): Player =>
+  makePlayer('MEIA', overall, { isGoalkeeper: true, gk: clampAttr(overall), ...overrides });
 
-/** Nota variada mas dentro da escala 0–5. */
-const variedRating = (i: number): number => clampRating(1.5 + (i % 8) * 0.5);
+/** Overall variado mas dentro da escala 0–100. */
+const variedOverall = (i: number): number => clampAttr(30 + (i % 8) * 10);
 
 /** Pool fácil: bastante opção em todas as posições, notas variadas mas nunca escassas. */
 export const buildBalancedPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
-  for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper(3 + (i % 3) * 0.5));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
-  for (let i = 0; i < numTeams * 5; i++) players.push(makePlayer('MEIA', variedRating(i)));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', variedRating(i)));
+  for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper(60 + (i % 3) * 10));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedOverall(i)));
+  for (let i = 0; i < numTeams * 5; i++) players.push(makePlayer('MEIA', variedOverall(i)));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', variedOverall(i)));
   return players;
 };
 
@@ -77,9 +97,9 @@ export const buildFewDefendersPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
   const nativeDefenders = Math.max(1, Math.ceil(numTeams / 2));
-  for (let i = 0; i < nativeDefenders; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
-  for (let i = 0; i < numTeams * 7; i++) players.push(makePlayer('MEIA', variedRating(i)));
-  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('ATACANTE', variedRating(i)));
+  for (let i = 0; i < nativeDefenders; i++) players.push(makePlayer('DEFENSOR', variedOverall(i)));
+  for (let i = 0; i < numTeams * 7; i++) players.push(makePlayer('MEIA', variedOverall(i)));
+  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('ATACANTE', variedOverall(i)));
   return players;
 };
 
@@ -87,8 +107,8 @@ export const buildFewDefendersPool = (numTeams: number): Player[] => {
 export const buildFewMeiasPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', variedRating(i)));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedOverall(i)));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('ATACANTE', variedOverall(i)));
   return players;
 };
 
@@ -97,9 +117,9 @@ export const buildFewAtacantesPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
   const nativeAttackers = Math.max(1, Math.ceil(numTeams / 2));
-  for (let i = 0; i < nativeAttackers; i++) players.push(makePlayer('ATACANTE', variedRating(i)));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
-  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', variedRating(i)));
+  for (let i = 0; i < nativeAttackers; i++) players.push(makePlayer('ATACANTE', variedOverall(i)));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('DEFENSOR', variedOverall(i)));
+  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', variedOverall(i)));
   return players;
 };
 
@@ -107,9 +127,9 @@ export const buildFewAtacantesPool = (numTeams: number): Player[] => {
 export const buildMinimalPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 3));
-  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', 3));
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('ATACANTE', 3));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 60));
+  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', 60));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('ATACANTE', 60));
   return players;
 };
 
@@ -120,12 +140,12 @@ export const buildMinimalPool = (numTeams: number): Player[] => {
 export const buildSkewedPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 5)); // elite
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 1)); // fracos
-  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('MEIA', 5));
-  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('MEIA', 1));
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('ATACANTE', 5));
-  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('ATACANTE', 1));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 100)); // elite
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('DEFENSOR', 20)); // fracos
+  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('MEIA', 100));
+  for (let i = 0; i < numTeams * 3; i++) players.push(makePlayer('MEIA', 20));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('ATACANTE', 100));
+  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('ATACANTE', 20));
   return players;
 };
 
@@ -133,10 +153,10 @@ export const buildSkewedPool = (numTeams: number): Player[] => {
 export const buildNoAttackerPool = (numTeams: number): Player[] => {
   const players: Player[] = [];
   for (let i = 0; i < numTeams; i++) players.push(makeGoalkeeper());
-  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('DEFENSOR', variedRating(i)));
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('MEIA', 4, { traits: { pivot: true } }));
-  for (let i = 0; i < numTeams; i++) players.push(makePlayer('MEIA', 3.5, { traits: { lowRecovery: true } }));
-  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', variedRating(i)));
+  for (let i = 0; i < numTeams * 2; i++) players.push(makePlayer('DEFENSOR', variedOverall(i)));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('MEIA', 80, { traits: { pivot: true } }));
+  for (let i = 0; i < numTeams; i++) players.push(makePlayer('MEIA', 70, { traits: { lowRecovery: true } }));
+  for (let i = 0; i < numTeams * 4; i++) players.push(makePlayer('MEIA', variedOverall(i)));
   return players;
 };
 

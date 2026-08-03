@@ -4,8 +4,8 @@
 // usuário (a UI só chama `balanceTeams`/`balanceTeamsOptions`).
 
 import type { Player, Team, TeamSlotPlayer, SimulationResult, Position } from '../domain/types';
-import { posToLabel } from '../domain/playerAttributes';
-import { isPivot, isFast, hasGoodBuildUp, hasLowRecovery } from './playerModel';
+import { posToLabel } from '../domain/types';
+import { isPivot, isFast, hasGoodBuildUp, hasLowRecovery, overallOf } from './playerModel';
 import { getCombinations } from './combinatorics';
 
 /** Layout de vagas por setor (fora o goleiro) — as três somam 6 jogadores de linha. */
@@ -29,12 +29,25 @@ const chooseLayout = (numDefenders: number, numAttackers: number): Layout => {
 
 /** Um time não pode ter mais que isso de atacantes de origem na linha (regra dura). */
 const MAX_ATTACKERS = 4;
-/** Ao garantir o mínimo de 1 por posição, dá-se preferência a quem tem >= isso. */
-const PREFERRED_MIN_RATING = 3;
+/**
+ * Ao garantir o mínimo de 1 por posição, dá-se preferência a quem tem overall
+ * >= isso. CONVERSÃO DE ESCALA (estrela 0–5 -> overall 0–100): o valor antigo
+ * era 3 (estrelas) numa escala em que o máximo é 5 -> 3/5 = 60% -> 60 (0–100).
+ * Não é coincidência ter virado um número "redondo": é só reaplicar a mesma
+ * fração ao teto novo (100 em vez de 5).
+ */
+const PREFERRED_MIN_OVERALL = 60;
 /** Jogadores de linha por time (fora o goleiro). As três formações somam 6. */
 const LINE_SIZE = 6;
-/** Ruído aplicado à nota na hora de escolher, pra variar os cenários entre simulações. */
-const NOISE_AMPLITUDE = 0.75;
+/**
+ * Ruído aplicado à nota na hora de escolher, pra variar os cenários entre
+ * simulações. CONVERSÃO DE ESCALA: o valor antigo era 0,75 numa escala 0–5
+ * (amplitude relativa de 0,75/5 = 15% do teto). Simplesmente multiplicar por
+ * 20 (escala nova é 20x maior) preserva essa MESMA amplitude relativa:
+ * 0,75 × 20 = 15 (15% de 100) — NÃO reaproveita o número 0,75 cru, que na
+ * escala nova seria ruído desprezível (quase não desempataria nada).
+ */
+const NOISE_AMPLITUDE = 15;
 
 const POSITION_ROLE_SHORT: Record<Position, string> = {
   DEFENSOR: 'DEF',
@@ -70,13 +83,13 @@ interface TeamData {
 type Predicate = (p: Player) => boolean;
 type Eligible = (t: TeamData, p: Player) => boolean;
 
-const lineSum = (t: TeamData): number => t.line.reduce((s, p) => s + p.rating, 0);
+const lineSum = (t: TeamData): number => t.line.reduce((s, p) => s + overallOf(p), 0);
 const attackerCount = (t: TeamData): number => t.line.filter(p => p.position === 'ATACANTE').length;
 const pivotLineCount = (t: TeamData): number => t.line.filter(p => isPivot(p)).length;
 const hasPosition = (t: TeamData, pos: Position): boolean => t.line.some(p => p.position === pos);
 const teamHasTrait = (t: TeamData, pred: Predicate): boolean => (t.gk ? pred(t.gk) : false) || t.line.some(pred);
 const mean = (values: number[]): number => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
-const maxByRating = (arr: Player[]): Player => arr.reduce((best, p) => (p.rating > best.rating ? p : best), arr[0]);
+const maxByOverall = (arr: Player[]): Player => arr.reduce((best, p) => (overallOf(p) > overallOf(best) ? p : best), arr[0]);
 
 const variance = (values: number[]): number => {
   if (values.length === 0) return 0;
@@ -92,7 +105,7 @@ const takeBest = (working: Player[], candidates: Player[], getNoise: () => numbe
   let bestIdx = -1;
   let bestScore = -Infinity;
   for (const cand of candidates) {
-    const score = cand.rating + getNoise();
+    const score = overallOf(cand) + getNoise();
     if (score > bestScore) {
       bestScore = score;
       bestIdx = working.indexOf(cand);
@@ -102,7 +115,7 @@ const takeBest = (working: Player[], candidates: Player[], getNoise: () => numbe
   return working.splice(bestIdx, 1)[0];
 };
 
-/** Atribui um jogador ao time mais fraco (menor soma de estrelas) que consiga recebê-lo. */
+/** Atribui um jogador ao time mais fraco (menor soma de overall) que consiga recebê-lo. */
 const assignToWeakestEligible = (
   teams: TeamData[],
   working: Player[],
@@ -156,7 +169,7 @@ const makeSlot = (
 ): TeamSlotPlayer => ({
   player,
   assignedRole,
-  roleScore: player.rating,
+  roleScore: overallOf(player),
   roleShort,
   roleLabel,
   improvised,
@@ -165,15 +178,15 @@ const makeSlot = (
 /**
  * Escolhe qual meia sobe pro ataque quando o time não tem atacante de origem:
  * 1º um com "facilidade em ser pivô", 2º um com "recompõe pouco"; em empate
- * (vários candidatos) ou sem nenhuma tag, o de mais estrelas.
+ * (vários candidatos) ou sem nenhuma tag, o de maior overall.
  */
 export const pickImprovisedAttacker = (midfielders: Player[]): Player | null => {
   if (midfielders.length === 0) return null;
   const pivots = midfielders.filter(p => isPivot(p));
-  if (pivots.length > 0) return maxByRating(pivots);
+  if (pivots.length > 0) return maxByOverall(pivots);
   const lazy = midfielders.filter(p => hasLowRecovery(p));
-  if (lazy.length > 0) return maxByRating(lazy);
-  return maxByRating(midfielders);
+  if (lazy.length > 0) return maxByOverall(lazy);
+  return maxByOverall(midfielders);
 };
 
 /**
@@ -183,9 +196,9 @@ export const pickImprovisedAttacker = (midfielders: Player[]): Player | null => 
  * A formação é a que melhor encaixa nas contagens de defensores e atacantes.
  */
 const arrangeTeam = (team: TeamData): { slots: TeamSlotPlayer[] } => {
-  const byRatingDesc = (a: Player, b: Player) => b.rating - a.rating;
-  const naturalDef = team.line.filter(p => p.position === 'DEFENSOR').sort(byRatingDesc);
-  const naturalAta = team.line.filter(p => p.position === 'ATACANTE').sort(byRatingDesc);
+  const byOverallDesc = (a: Player, b: Player) => overallOf(b) - overallOf(a);
+  const naturalDef = team.line.filter(p => p.position === 'DEFENSOR').sort(byOverallDesc);
+  const naturalAta = team.line.filter(p => p.position === 'ATACANTE').sort(byOverallDesc);
   const usedIds = new Set<string>();
 
   let improvisedAttacker: Player | null = null;
@@ -208,8 +221,8 @@ const arrangeTeam = (team: TeamData): { slots: TeamSlotPlayer[] } => {
 
   const improvisedDefenders: Player[] = [];
   if (defStarters.length < layout.def) {
-    const availMids = team.line.filter(p => p.position === 'MEIA' && !usedIds.has(p.id)).sort(byRatingDesc);
-    const availAtas = team.line.filter(p => p.position === 'ATACANTE' && !usedIds.has(p.id)).sort(byRatingDesc);
+    const availMids = team.line.filter(p => p.position === 'MEIA' && !usedIds.has(p.id)).sort(byOverallDesc);
+    const availAtas = team.line.filter(p => p.position === 'ATACANTE' && !usedIds.has(p.id)).sort(byOverallDesc);
     const defPool = [...availMids, ...availAtas];
     const needed = layout.def - defStarters.length;
     for (let k = 0; k < needed && k < defPool.length; k++) {
@@ -299,7 +312,7 @@ export const generateTeams = (
       spreadOnePerTeam(teams, working, p => isPivot(p), getNoise);
     }
 
-    // 4) (opcional) 1 jogador de cada posição por time, preferindo >= 3 estrelas.
+    // 4) (opcional) 1 jogador de cada posição por time, preferindo overall >= PREFERRED_MIN_OVERALL.
     if (enforcePositionMin) {
       for (const pos of MIN_GUARANTEE_ORDER) {
         let progressed = true;
@@ -312,7 +325,7 @@ export const generateTeams = (
           const team = needing[0];
           const ofPos = working.filter(p => p.position === pos && canReceive(team, p));
           if (ofPos.length === 0) break; // não há mais dessa posição — regra cede
-          const preferred = ofPos.filter(p => p.rating >= PREFERRED_MIN_RATING);
+          const preferred = ofPos.filter(p => overallOf(p) >= PREFERRED_MIN_OVERALL);
           const chosen = takeBest(working, preferred.length ? preferred : ofPos, getNoise);
           if (chosen) {
             team.line.push(chosen);
@@ -358,13 +371,13 @@ export const generateTeams = (
     // 8) Monta campinhos, overall e banco de cada time.
     const finalTeams: Team[] = teams.map(t => {
       const { slots } = arrangeTeam(t);
-      const onFieldRatings = [...(t.gk ? [t.gk.rating] : []), ...t.line.map(p => p.rating)];
-      const overall = mean(onFieldRatings);
+      const onFieldOveralls = [...(t.gk ? [overallOf(t.gk)] : []), ...t.line.map(p => overallOf(p))];
+      const overall = mean(onFieldOveralls);
 
       const benchSlots: TeamSlotPlayer[] = t.bench.map(p =>
         makeSlot(p, posToLabel(p.position), POSITION_ROLE_SHORT[p.position], posToLabel(p.position))
       );
-      const benchOverall = t.bench.length ? mean(t.bench.map(p => p.rating)) : undefined;
+      const benchOverall = t.bench.length ? mean(t.bench.map(p => overallOf(p))) : undefined;
 
       return {
         id: t.id,
@@ -427,7 +440,7 @@ const canonicalMembership = (r: SimulationResult): string =>
  *  - Proposta 2: 1 def + 1 meia + 1 atacante + 1 goleiro por time
  *    (sem o espalhamento de traços), diferente da 1.
  *  - Proposta 3: só a garantia de 1 goleiro por time.
- * Todas balanceadas pela estrela e respeitando o teto de 4 atacantes.
+ * Todas balanceadas pelo overall e respeitando o teto de 4 atacantes.
  */
 export const generateProposals = (
   players: Player[],

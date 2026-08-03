@@ -13,7 +13,7 @@ const A = (o: Partial<AttrVector> = {}): AttrVector =>
 
 const makePlayer = (overrides: Partial<Player> = {}): Player => ({
   id: `p${++idc}`, name: `P${idc}`, active: true, isGoalkeeper: false, position: 'MEIA',
-  rating: 3, attributes: A(), gk: null, acceptedPositions: allEnabled([BOX_TO_BOX]),
+  attributes: A(), gk: null, acceptedPositions: allEnabled([BOX_TO_BOX]),
   ...overrides,
 });
 

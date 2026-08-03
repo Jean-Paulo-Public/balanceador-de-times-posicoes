@@ -278,23 +278,122 @@ export const assignSystem = (players: Player[], system: TacticalSystem, cache?: 
 };
 
 /**
+ * Cache de duas camadas por EXECUÇÃO de balanceamento:
+ *  - `cost`: jogador×identidade -> custo (já existia, ver `CostCache` acima).
+ *  - `system`: CONJUNTO de jogadores (ids, ORDEM-INDEPENDENTE) -> melhor
+ *    sistema. É o ganho grande (Otimização 1 do diagnóstico de performance):
+ *    o MESMO grupo de 6 jogadores é resolvido repetidas vezes (busca local só
+ *    troca 2 times por vez; os 6 jogos do rodízio de banco repetem grupos
+ *    entre si; o desempate do banco reavalia grupos quase idênticos).
+ *
+ * ESCOPO E INVALIDAÇÃO: criado uma vez por chamada a `balanceTeamsOptions`
+ * (ver `createFormationCache()` em balance.ts) e descartado ao fim dela.
+ * NUNCA é módulo-level/singleton — um cache que sobrevivesse a uma troca de
+ * elenco ou de atributos (lesão, edição de nota) devolveria resultado stale
+ * sem quebrar nenhum teste (o bug mais perigoso deste tipo de otimização).
+ *
+ * CORREÇÃO DA CHAVE ORDEM-INDEPENDENTE: a chave é os ids ORDENADOS (não a
+ * ordem de chegada no array `players`, que varia entre chamadas — swaps da
+ * busca local, grupos do desempate de banco etc.). Isso é seguro porque cada
+ * ENTRADA do cache é gravada (no miss) usando o resultado computado para a
+ * ordem REAL passada naquela primeira chamada — nada é recomputado numa
+ * "ordem canônica" diferente. Chamadas seguintes com o MESMO conjunto (em
+ * outra ordem) reaproveitam esse resultado remapeando `playerIndex` por id
+ * (`fromStored`/`toStored` abaixo) — ou seja, o cálculo em si nunca muda,
+ * só a indexação de retorno. O único cenário em que isso poderia divergir de
+ * uma chamada sem cache é um EMPATE EXATO de custo total entre duas
+ * atribuições ótimas distintas (tie-break dependente de ordem dentro do
+ * húngaro) — com custos em ponto flutuante (fit combinando vários atributos
+ * reais), esse empate exato é praticamente inexistente; não observado em
+ * nenhum dos 204 testes após a mudança.
+ */
+export interface FormationCache {
+  cost: CostCache;
+  system: Map<string, StoredInference>;
+}
+
+export const createFormationCache = (): FormationCache => ({ cost: new Map(), system: new Map() });
+
+interface StoredAssignment {
+  slotId: string;
+  identity: LinePosition;
+  zone: FieldZone;
+  playerId: string;
+  fit: number;
+  x: number;
+  y: number;
+}
+
+interface StoredInference {
+  system: TacticalSystem;
+  shape: TacticalSystem;
+  total: number;
+  feasible: boolean;
+  assignments: StoredAssignment[];
+}
+
+const toStored = (inf: FormationInference, players: Player[]): StoredInference => ({
+  system: inf.system,
+  shape: inf.shape,
+  total: inf.total,
+  feasible: inf.feasible,
+  assignments: inf.assignments.map((a) => ({
+    slotId: a.slotId, identity: a.identity, zone: a.zone, fit: a.fit, x: a.x, y: a.y,
+    playerId: players[a.playerIndex].id,
+  })),
+});
+
+const fromStored = (stored: StoredInference, players: Player[]): FormationInference => {
+  const idxOf = new Map(players.map((p, i) => [p.id, i] as const));
+  return {
+    system: stored.system,
+    shape: stored.shape,
+    total: stored.total,
+    feasible: stored.feasible,
+    assignments: stored.assignments.map((a) => ({
+      slotId: a.slotId, identity: a.identity, zone: a.zone, fit: a.fit, x: a.x, y: a.y,
+      playerIndex: idxOf.get(a.playerId)!,
+    })),
+  };
+};
+
+const systemCacheKey = (players: Player[]): string => players.map((p) => p.id).slice().sort().join(',');
+
+/**
  * Escolhe, entre os 4 sistemas, o de menor custo total (maior fit efetivo,
  * respeitando as restrições hard) para os 6 jogadores de linha dados. O
  * rótulo do sistema é EMERGENTE — resultado desta escolha, não input.
  */
-export const chooseBestSystem = (players: Player[], cache?: CostCache): FormationInference => {
+export const chooseBestSystem = (players: Player[], cache?: FormationCache): FormationInference => {
+  if (cache) {
+    const key = systemCacheKey(players);
+    const hit = cache.system.get(key);
+    if (hit) return fromStored(hit, players);
+
+    let best: FormationInference | null = null;
+    let bestCost = Infinity;
+    for (const system of ALL_SYSTEMS) {
+      const inf = assignSystem(players, system, cache.cost);
+      const cost = inf.feasible ? 6 * 100 - inf.total : Infinity;
+      if (cost < bestCost) { bestCost = cost; best = inf; }
+    }
+    const result = best ?? assignSystem(players, ALL_SYSTEMS[0], cache.cost);
+    cache.system.set(key, toStored(result, players));
+    return result;
+  }
+
   let best: FormationInference | null = null;
   let bestCost = Infinity;
   for (const system of ALL_SYSTEMS) {
-    const inf = assignSystem(players, system, cache);
+    const inf = assignSystem(players, system);
     // custo total = 600 - total (fit) quando feasible, senão penaliza fortemente
     const cost = inf.feasible ? 6 * 100 - inf.total : Infinity;
     if (cost < bestCost) { bestCost = cost; best = inf; }
   }
   // Se nenhum sistema é feasible, devolve o melhor "esforço" mesmo assim (o
   // chamador — Fase 5 — já deve ter barrado o caso antes de chegar aqui).
-  return best ?? assignSystem(players, ALL_SYSTEMS[0], cache);
+  return best ?? assignSystem(players, ALL_SYSTEMS[0]);
 };
 
 /** Compat: nome antigo (era a inferência via força bruta em 5 formações). */
-export const inferBestFormation = (players: Player[], cache?: CostCache): FormationInference => chooseBestSystem(players, cache);
+export const inferBestFormation = (players: Player[], cache?: FormationCache): FormationInference => chooseBestSystem(players, cache);

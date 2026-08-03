@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import type { Player } from '../../domain/types';
 import { usePlayerStore } from '../../store/usePlayerStore';
-import { posToLabel } from '../../domain/playerAttributes';
+import { posToLabel } from '../../domain/types';
 import { baseOverallOf, isInjured, isPivot, effectiveAttributesBase, effectiveGk } from '../../engine';
-import { Shield, Users, Swords, Edit, Trash2, ShieldAlert } from 'lucide-react';
+import { BOX_TO_BOX, LINE_POSITIONS, type LinePosition } from '../../domain/positions';
+import { Shield, Users, Swords, Edit, Trash2, ShieldAlert, Shuffle } from 'lucide-react';
 import { computeDisplayOvrs, OVR_DISPLAY_ITEMS } from './ovrDisplay';
 import styles from './PlayerCard.module.css';
 
@@ -47,6 +48,26 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
         <div className={styles.metaRow}>
           <span className={`chip ${visual.chip}`}>{visual.icon} {posToLabel(player.position)}</span>
           {isPivot(player) && <span className="chip chip-accent">Pivô</span>}
+        </div>
+
+        <div className={styles.positionsRow}>
+          {player.acceptedPositions.some((e) => e.enabled && e.position === BOX_TO_BOX) ? (
+            <span className={`${styles.posChip} ${styles.posChipBoxToBox}`} title="Coringa: joga em qualquer posição, o sistema decide">
+              <Shuffle size={11} /> Coringa (qualquer posição)
+            </span>
+          ) : (
+            player.acceptedPositions
+              .filter((e): e is { position: LinePosition; enabled: boolean } => e.position !== BOX_TO_BOX)
+              .map((e, i) => (
+                <span
+                  key={e.position}
+                  className={`${styles.posChip} ${e.enabled ? styles.posChipEnabled : styles.posChipDisabled}`}
+                  title={e.enabled ? `${i + 1}ª preferência` : `${i + 1}ª preferência — desativada (não entra no balanceador)`}
+                >
+                  {LINE_POSITIONS[e.position].label}
+                </span>
+              ))
+          )}
         </div>
 
         <div className={styles.overalls}>

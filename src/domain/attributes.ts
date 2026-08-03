@@ -125,7 +125,8 @@ export interface RoleMeta {
 // dominante; B2B (coringa de transição) fica com os dois quase equilibrados.
 export const ROLES: Record<LineRoleKey, RoleMeta> = {
   // VEL .13 → .03 pelo mesmo motivo do OVR 'Defesa': marcar não é correr.
-  MARC: { key: 'MARC', label: 'Marcador',         weights: w(.00, .07, .04, .46, .03, .16, .04, .05, .15) },
+  // FIS .15 → .10 / DEF .46 → .51, alinhado ao OVR 'Defesa' e ao FIXO.
+  MARC: { key: 'MARC', label: 'Marcador',         weights: w(.00, .07, .04, .51, .03, .16, .04, .05, .10) },
   CONS: { key: 'CONS', label: 'Construtor',       weights: w(.03, .40, .13, .24, .04, .04, .02, .04, .06) },
   B2B:  { key: 'B2B',  label: 'Box-to-box',       weights: w(.07, .18, .08, .20, .12, .11, .11, .07, .06) },
   ARM:  { key: 'ARM',  label: 'Armador',          weights: w(.08, .36, .22, .04, .06, .01, .04, .15, .04) },
@@ -179,7 +180,10 @@ export const OVR_WEIGHTS: Record<OvrKey, AttrVector> = {
   // defesa num jogador de DEF baixo (ex.: DEF 20 + VEL 100 exibia "Defesa 41",
   // sendo 13 pontos só de velocidade contra 8 de defesa). Mesma lógica que
   // separou RCD de VEL: ser rápido não é defender. Os .10 foram pra DEF e RCD.
-  Defesa:      w(.00, .05, .02, .46, .03, .22, .02, .05, .15),
+  // FIS .15 → .10 e DEF .46 → .51: físico estava sobrevalorizado no número
+  // defensivo (mesma razão do ajuste em LINE_POSITIONS.FIXO) — ser forte não é
+  // marcar. O físico segue contando, só não decide.
+  Defesa:      w(.00, .05, .02, .51, .03, .22, .02, .05, .10),
   Construcao:  w(.03, .44, .17, .11, .03, .02, .03, .09, .08),
   Mobilidade:  w(.10, .07, .12, .04, .28, .03, .12, .19, .05),
 };

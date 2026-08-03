@@ -78,4 +78,20 @@ describe('catálogo de posições de linha (7 posições)', () => {
     expect(linePositionFit(volta, 'LATERAL')).toBeGreaterThan(linePositionFit(pressionaNaoVolta, 'LATERAL'));
     expect(linePositionFit(pressionaNaoVolta, 'ALA')).toBeGreaterThan(linePositionFit(volta, 'ALA'));
   });
+
+  // Guarda contra a regressão do "pivô virando fixo só porque é forte": o físico
+  // é multiplicador da marcação, não substituto. Um jogador forte que não marca
+  // não pode ganhar a vaga de último homem de quem marca bem.
+  it('físico alto NÃO compensa marcação baixa no FIXO', () => {
+    const forteQueNaoMarca: AttrVector = { FIN: 80, CRI: 50, DRI: 50, DEF: 20, VEL: 50, RCD: 35, INT: 50, MOV: 50, FIS: 95 };
+    const marcadorMedioFisico: AttrVector = { FIN: 30, CRI: 50, DRI: 50, DEF: 85, VEL: 50, RCD: 75, INT: 50, MOV: 50, FIS: 50 };
+    expect(linePositionFit(marcadorMedioFisico, 'FIXO')).toBeGreaterThan(linePositionFit(forteQueNaoMarca, 'FIXO'));
+    // ...e o forte finalizador segue sendo melhor PIVO do que fixo.
+    expect(linePositionFit(forteQueNaoMarca, 'PIVO')).toBeGreaterThan(linePositionFit(forteQueNaoMarca, 'FIXO'));
+  });
+
+  it('no FIXO, marcação pesa bem mais que físico', () => {
+    const wf = LINE_POSITIONS.FIXO.weights;
+    expect(wf.DEF).toBeGreaterThan(wf.FIS * 2.5);
+  });
 });

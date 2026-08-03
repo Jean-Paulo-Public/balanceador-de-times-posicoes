@@ -10,11 +10,9 @@ import {
   ALL_LINE_POSITIONS, LINE_POSITIONS, BOX_TO_BOX, hasEnabledBoxToBox,
   type LinePosition, type PositionPreferenceEntry,
 } from '../../domain/positions';
-import { deriveAttributesFromStar, deriveGkFromStar } from '../../domain/deriveAttributes';
 import { describePlayerProfile } from '../../domain/playerProfile';
 import { suggestPositions, hasNoEnabledAmongBestPositions } from '../../engine';
 import { usePlayerStore } from '../../store/usePlayerStore';
-import { clampRating } from '../../domain/playerAttributes';
 import { setPositionOverrideAttr, removePositionOverrideAttr, clearPositionOverrides, overriddenPositionsOf } from './positionOverrideEditor';
 import { computeDisplayOvrs, OVR_DISPLAY_ITEMS, parseManualAttrInput } from './ovrDisplay';
 import styles from './PlayerForm.module.css';
@@ -53,15 +51,9 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const [isGoalkeeper, setIsGoalkeeper] = useState(editingPlayer?.isGoalkeeper || false);
   const [position, setPosition] = useState<Position>(editingPlayer?.position || 'DEFENSOR');
   const [attributes, setAttributes] = useState<AttrVector>(() =>
-    editingPlayer?.attributes
-      ? { ...editingPlayer.attributes }
-      : editingPlayer
-        ? deriveAttributesFromStar(editingPlayer.rating, editingPlayer.position)
-        : emptyAttrs(ATTR_DEFAULT),
+    editingPlayer ? { ...editingPlayer.attributes } : emptyAttrs(ATTR_DEFAULT),
   );
-  const [gk, setGk] = useState<number | null>(
-    editingPlayer?.gk ?? (editingPlayer ? deriveGkFromStar(editingPlayer.rating, editingPlayer.isGoalkeeper) : null),
-  );
+  const [gk, setGk] = useState<number | null>(editingPlayer?.gk ?? null);
   const [acceptedPositions, setAcceptedPositions] = useState<PositionPreferenceEntry[]>(() =>
     editingPlayer ? withBoxToBox([...editingPlayer.acceptedPositions]) : defaultAcceptedPositions(),
   );
@@ -159,7 +151,6 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     setPositionOverrides((prev) => setPositionOverrideAttr(prev, pos, attr, value, attributes));
 
   const displayOvrs = computeDisplayOvrs(attributes, isGoalkeeper ? (gk ?? GK_DEFAULT) : null);
-  const overall = displayOvrs.geral;
 
   // Jogador "rascunho" com os valores ATUAIS do formulário — só pra alimentar a
   // sugestão de posições (CAPACIDADE, ver domain/playerProfile.ts). Usa as
@@ -172,7 +163,6 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     active: editingPlayer?.active ?? true,
     isGoalkeeper,
     position,
-    rating: clampRating(overall / 20),
     attributes,
     gk: isGoalkeeper ? (gk ?? GK_DEFAULT) : null,
     acceptedPositions,
@@ -197,7 +187,6 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
       active: editingPlayer ? editingPlayer.active : true,
       isGoalkeeper,
       position,
-      rating: clampRating(overall / 20),
       attributes,
       gk: isGoalkeeper ? (gk ?? GK_DEFAULT) : null,
       acceptedPositions,

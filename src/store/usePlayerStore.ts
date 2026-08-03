@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Player } from '../domain/types';
-import { clampRating } from '../domain/playerAttributes';
-import { normalizePlayers, normalizePlayer } from './migration';
+import { normalizePlayers } from './migration';
 import { buildFunRoster } from './funRoster';
 
 interface PlayerState {
@@ -24,41 +23,62 @@ interface PlayerState {
   generateTestRoster: () => void;
 }
 
-// v7: `acceptedPositions` (lista ordenada de preferência, modelo v3) passa a
-// ser obrigatória em todo Player. Jogadores sem a lista (todo cadastro
-// anterior) recebem `[BOX_TO_BOX]` — coringa, joga em qualquer posição, o
-// sistema decide (ver `normalizePlayer` em migration.ts).
-//
-// v8: o atributo REC foi removido e dividido em RCD (Recomposição Defensiva)
-// e INT (Intensidade) — ver src/domain/attributes.ts. `attributes` salvo no
-// formato antigo (8 chaves, com REC) não bate mais com `parseAttrVector`
-// (que agora exige as 9 chaves novas) e cai no fallback já existente —
-// deriva de novo a partir da estrela via `deriveAttributesFromStar`. Não há
-// preservação do valor antigo de REC (decisão do dono: dado descartável,
-// sem usuários com backup a proteger); o importante é só que o rehydrate
-// NUNCA quebre com dado velho no localStorage (ver normalizePlayer/
-// parseAttrVector em migration.ts e os testes de v8 em migration.test.ts).
-const CURRENT_STORAGE_VERSION = 8;
+/**
+ * PORTÃO SIMPLES de versão (sem cadeia de migração incremental): o app ainda
+ * não foi lançado, não há usuário nem dado real a preservar, e o dono decidiu
+ * remover TODA retrocompatibilidade. Se o dado persistido não é EXATAMENTE
+ * desta versão, ele é DESCARTADO por inteiro — sem conversão, sem semeadura,
+ * sem default de posição — e o app recomeça com estado vazio (`INITIAL_STATE`
+ * abaixo). O requisito que continua valendo é que abrir com dado velho NUNCA
+ * quebre o app: descartar é um caminho explícito e limpo, nunca crash, NaN ou
+ * campo undefined chegando no solver.
+ *
+ * A VALIDAÇÃO de dado já NESTA versão continua existindo e é ESTRITA (ver
+ * `normalizePlayer`/`normalizePlayers` em migration.ts): um registro
+ * malformado (ex.: `attributes`/`gk` inválidos) é descartado individualmente,
+ * nunca "consertado" inventando valor.
+ */
+const CURRENT_STORAGE_VERSION = 9;
+
+type PersistablePlayerState = Pick<
+  PlayerState,
+  'players' | 'neverScaleGoalkeepers' | 'generateTestPlayersOnEmpty' | 'maxSixLinePlayers' | 'separatePairs'
+>;
+
+const INITIAL_STATE: PersistablePlayerState = {
+  // Por padrão a lista vem vazia — nada de jogador fake sem o usuário pedir.
+  players: [],
+  neverScaleGoalkeepers: false,
+  generateTestPlayersOnEmpty: false,
+  maxSixLinePlayers: false,
+  separatePairs: [],
+};
+
+/**
+ * PORTÃO SIMPLES de versão, extraído como função pura pra ser testável sem
+ * precisar simular localStorage/zustand: dado persistido que não é EXATAMENTE
+ * `CURRENT_STORAGE_VERSION` é descartado por inteiro (devolve `INITIAL_STATE`
+ * — estado vazio, nunca crash/NaN/undefined); dado já na versão certa passa
+ * adiante intacto (ainda vai ser validado estritamente por `normalizePlayers`
+ * em `onRehydrateStorage`).
+ */
+export const migrateStorage = (persistedState: unknown, version: number): PersistablePlayerState => {
+  if (version !== CURRENT_STORAGE_VERSION) return { ...INITIAL_STATE };
+  return persistedState as PersistablePlayerState;
+};
 
 export const usePlayerStore = create<PlayerState>()(
   persist(
     (set) => ({
-      // Por padrão a lista vem vazia — nada de jogador fake sem o usuário pedir.
-      players: [],
-      neverScaleGoalkeepers: false,
-      generateTestPlayersOnEmpty: false,
-      maxSixLinePlayers: false,
-      separatePairs: [],
+      ...INITIAL_STATE,
       addPlayer: (player) =>
         set((state) => ({
-          players: [...state.players, { ...player, id: crypto.randomUUID(), rating: clampRating(player.rating) }],
+          players: [...state.players, { ...player, id: crypto.randomUUID() }],
         })),
       updatePlayer: (id, updatedFields) =>
         set((state) => ({
           players: state.players.map((p) =>
-            p.id === id
-              ? { ...p, ...updatedFields, rating: clampRating(updatedFields.rating ?? p.rating) }
-              : p
+            p.id === id ? { ...p, ...updatedFields } : p
           ),
         })),
       deletePlayer: (id) =>
@@ -90,21 +110,20 @@ export const usePlayerStore = create<PlayerState>()(
     {
       name: 'balanceador-times-storage',
       version: CURRENT_STORAGE_VERSION,
-      migrate: (persistedState, version) => {
-        const state = persistedState as PlayerState;
-        if (version < CURRENT_STORAGE_VERSION) {
-          return { ...state, players: normalizePlayers(state.players) };
-        }
-        return state;
-      },
+      // PORTÃO SIMPLES: qualquer versão diferente da atual descarta o dado
+      // persistido por completo e devolve o estado inicial vazio (ver
+      // `migrateStorage`, exportada separadamente pra ser testável).
+      migrate: migrateStorage,
       onRehydrateStorage: () => (state) => {
         if (!state) return;
-        if (!state.players?.length && state.generateTestPlayersOnEmpty) {
+        // Valida ESTRITAMENTE o que sobreviveu ao portão (dado já na versão
+        // atual pode ainda estar corrompido — ex.: editado à mão no
+        // localStorage). Registros malformados são descartados, não
+        // consertados (ver normalizePlayers em migration.ts).
+        state.players = normalizePlayers(state.players ?? []);
+        if (!state.players.length && state.generateTestPlayersOnEmpty) {
           state.players = buildFunRoster();
-          return;
         }
-        // Garante que todo jogador está no shape novo (rating válido + flags).
-        state.players = (state.players ?? []).map((p) => normalizePlayer(p));
       },
     }
   )

@@ -60,8 +60,13 @@ interface RawPlayerLike {
 /**
  * Converte um JSON importado (array de jogadores, ou objeto { players: [...] })
  * em jogadores válidos no shape atual. Reaproveita `normalizePlayer` (mesma
- * validação usada na migração de dados do localStorage) pra posição, rating,
+ * validação ESTRITA usada pro dado do localStorage) pra posição,
  * attributes/gk/handicapPct — evita duplicar a validação dos atributos v2.
+ *
+ * SEM fallback: um arquivo antigo/inválido (sem `attributes`/`gk` v2 válidos —
+ * ex.: só tinha a estrela 0–5 do modelo anterior) é REJEITADO com um erro
+ * explícito, nomeando o jogador problemático. Não deriva mais nada a partir
+ * de estrela — essa escala não existe mais no domínio.
  */
 export const parseImportedPlayers = (rawText: string): Player[] => {
   const parsed = JSON.parse(rawText) as unknown;
@@ -79,8 +84,16 @@ export const parseImportedPlayers = (rawText: string): Player[] => {
     const raw = (source ?? {}) as RawPlayerLike;
     // Nome default indexado ("Jogador 1", "Jogador 2"...), diferente do default
     // genérico de `normalizePlayer` — só isso é específico da importação.
-    const withDefaultName = { ...raw, name: typeof raw.name === 'string' && raw.name ? raw.name : `Jogador ${index + 1}` };
-    return normalizePlayer(withDefaultName);
+    const displayName = typeof raw.name === 'string' && raw.name ? raw.name : `Jogador ${index + 1}`;
+    const withDefaultName = { ...raw, name: displayName };
+    const player = normalizePlayer(withDefaultName);
+    if (!player) {
+      throw new Error(
+        `Arquivo em formato antigo ou inválido: "${displayName}" não tem atributos (0–100) válidos. ` +
+        'Exporte novamente pelo app atual (a escala antiga de estrelas não é mais aceita).',
+      );
+    }
+    return player;
   });
 };
 

@@ -38,8 +38,9 @@ export interface FeasibilityResult {
   message: string | null;
 }
 
-/** "A, B e C" (português, sem vírgula antes do "e" final). */
-const joinNames = (names: string[]): string => {
+/** "A, B e C" (português, sem vírgula antes do "e" final). Reaproveitada por
+ * outros mecanismos de aviso nomeando jogadores (ex.: rotina de banco, Fase 6). */
+export const joinNames = (names: string[]): string => {
   if (names.length === 0) return '';
   if (names.length === 1) return names[0];
   return `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
@@ -73,6 +74,9 @@ export const checkPositionFeasibility = (players: Player[], numTeams: number): F
     const vagaWord = v.maxAllowed === 1 ? 'vaga' : 'vagas';
     return `${joinNames(v.playerNames)} só ${v.playerNames.length === 1 ? 'joga' : 'jogam'} de ${label}, e há só ${v.maxAllowed} ${vagaWord} de ${label} no total (${numTeams} ${numTeams === 1 ? 'time' : 'times'})`;
   });
-  const message = `Impossível formar times: ${parts.join('; ')}. Cadastre uma posição secundária para um deles.`;
+  // Saídas possíveis (nunca escolhidas automaticamente — só sugeridas, texto):
+  // habilitar uma posição já cadastrada mas desativada, cadastrar posição nova,
+  // ou marcar o jogador como BOX_TO_BOX (coringa).
+  const message = `Impossível formar times: ${parts.join('; ')}. Saídas: habilite uma posição secundária já cadastrada (mas desativada) para um deles, cadastre uma posição nova, ou marque algum deles como coringa (Box-to-Box).`;
   return { feasible: false, violations, message };
 };

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import type { Player } from '../domain/types';
-import { deriveAttributesFromStar } from '../domain/deriveAttributes';
+import { emptyAttrs } from '../domain/attributes';
 import { allEnabled, type PositionPreference } from '../domain/positions';
 import { checkPositionFeasibility } from './feasibility';
 
 let idc = 0;
 const P = (name: string, positions: PositionPreference[]): Player => ({
-  id: `p${++idc}`, name, active: true, isGoalkeeper: false, position: 'MEIA', rating: 3,
-  attributes: deriveAttributesFromStar(3, 'MEIA'), gk: null, acceptedPositions: allEnabled(positions),
+  id: `p${++idc}`, name, active: true, isGoalkeeper: false, position: 'MEIA',
+  attributes: emptyAttrs(60), gk: null, acceptedPositions: allEnabled(positions),
 });
 
 describe('checkPositionFeasibility (Fase 5)', () => {

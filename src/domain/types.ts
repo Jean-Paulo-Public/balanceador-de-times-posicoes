@@ -1,19 +1,28 @@
 // Modelo de domínio do Balanceador de Times.
 //
-// Modelo v2 (única fonte de verdade): cada jogador tem uma posição de origem
-// (Defensor/Meia/Atacante) e 9 atributos 0–100 (FIN/CRI/DRI/DEF/VEL/RCD/INT/MOV/
-// FIS — ver src/domain/attributes.ts) que alimentam o balanceador (funções,
-// OVRs contextuais, formação inferida). `rating` (estrela 0–5) é um campo
-// DERIVADO do overall geral, mantido só para exibição/ordenação — nunca é
-// fonte de verdade dos atributos (ver PlayerForm.tsx, que já o recalcula a
-// partir do overall a cada edição). Traços como "pivô nato" ou "veloz" não são
-// mais flags manuais: são inferidos dos atributos (ver isPivot/isFast/
-// hasGoodBuildUp/hasLowRecovery em src/engine/playerModel.ts).
+// Modelo v3 (única fonte de verdade, escala ÚNICA 0–100): cada jogador tem uma
+// posição de origem (Defensor/Meia/Atacante) e 9 atributos 0–100 (FIN/CRI/DRI/
+// DEF/VEL/RCD/INT/MOV/FIS — ver src/domain/attributes.ts) que alimentam o
+// balanceador (funções, OVRs contextuais, formação inferida). Não existe mais
+// nenhuma escala de estrela (0–5): o Overall (0–100, ver `overallOf` em
+// src/engine/playerModel.ts) é o único número de nota exibido/comparado.
+// Traços como "pivô nato" ou "veloz" não são flags manuais: são inferidos dos
+// atributos (ver isPivot/isFast/hasGoodBuildUp/hasLowRecovery em
+// src/engine/playerModel.ts).
 
 import type { AttrVector } from './attributes';
 import type { LinePosition, PositionPreferenceEntry } from './positions';
 
 export type Position = 'DEFENSOR' | 'MEIA' | 'ATACANTE';
+
+export const posToLabel = (pos: Position): string => {
+  switch (pos) {
+    case 'DEFENSOR': return 'Defensor';
+    case 'MEIA': return 'Meia';
+    case 'ATACANTE': return 'Atacante';
+    default: return 'Jogador';
+  }
+};
 
 /**
  * Exceções de atributo por posição de linha (modelo v3.1) — mapa ESPARSO nos
@@ -35,8 +44,6 @@ export interface Player {
   /** Consegue jogar no gol (emergência). Um goleiro por time pode ser reservado. */
   isGoalkeeper: boolean;
   position: Position;
-  /** Nota única do jogador, de 0 a 5, em passos de 0,5 — DERIVADA do overall (exibição/ordenação). */
-  rating: number;
   /** Atributos 0–100 do modelo v2. Fonte de verdade do balanceador. */
   attributes: AttrVector;
   /** Nota de goleiro 0–100 (null se não joga no gol). */
@@ -61,7 +68,7 @@ export interface TeamSlotPlayer {
   player: Player;
   /** Id da vaga (ex.: "Defensor 1", "Meia 2", "Goleiro"). */
   assignedRole: string;
-  /** Nota usada para exibição/ordenação — é o próprio rating do jogador. */
+  /** Nota (0–100) usada para exibição/ordenação — é o Overall do jogador. */
   roleScore: number;
   roleLabel?: string;
   /** GK | DEF | MEI | ATA */
@@ -73,9 +80,9 @@ export interface TeamSlotPlayer {
 export interface Team {
   id: number;
   name: string;
-  /** Média das estrelas dos jogadores do time (0 a 5). */
+  /** Média do Overall (0–100) dos jogadores do time. */
   overall: number;
-  /** Média das estrelas do banco (0 a 5), se houver reservas. */
+  /** Média do Overall (0–100) do banco, se houver reservas. */
   benchOverall?: number;
   players: TeamSlotPlayer[];
   bench: TeamSlotPlayer[];
@@ -86,6 +93,6 @@ export interface SimulationResult {
   /** Título da proposta (ex.: "Proposta 1"), quando exibida numa lista de propostas. */
   title?: string;
   teams: Team[];
-  /** Variância das médias de estrela entre os times — quanto menor, mais equilibrado. */
+  /** Variância das médias de Overall (0–100) entre os times — quanto menor, mais equilibrado. */
   equilibrium: number;
 }

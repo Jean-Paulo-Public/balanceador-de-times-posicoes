@@ -172,6 +172,41 @@ export function WikiTab() {
             isso explicitamente em vez de simplesmente escalar um deles sem dizer nada.
           </p>
         </Section>
+
+        <Section title="Rodízio de banco (quem fica de fora)">
+          <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Ninguém escolhe quem senta a dedo: a cada um dos 6 jogos o sistema decide sozinho quem vai pro banco.
+            A regra muda de acordo com o <strong>tamanho do banco daquele time naquela rodada</strong> — e é normal
+            (não é bug) times diferentes de uma mesma pelada se comportarem diferente:
+          </p>
+          <ul style={{ margin: '10px 0 0', paddingLeft: 20, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <li>
+              <strong>Banco pequeno (até 2 jogadores de fora por jogo):</strong> regra fechada — quem sentou no jogo
+              anterior joga neste. Ninguém fica dois jogos seguidos no banco.
+            </li>
+            <li>
+              <strong>Banco maior (3 ou mais de fora por jogo):</strong> essa restrição é liberada — repetir banco em
+              jogos seguidos passa a ser permitido, porque com um banco grande não tem como todo mundo jogar toda
+              rodada.
+            </li>
+          </ul>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Por exemplo: numa pelada com 3 times, é normal o Time A ter 2 de fora por jogo (ninguém repete) e o Time B
+            ter 3 de fora por jogo (pode repetir) — <strong>comportamentos diferentes na mesma pelada, ao mesmo
+            tempo</strong>, e isso é esperado.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Mesmo quando essa restrição é liberada, a justiça continua valendo: vai pro banco quem sentou{' '}
+            <strong>menos vezes</strong> até ali. Ninguém fica de fora quatro vezes enquanto outro fica só uma. Em
+            caso de empate entre igualmente elegíveis, sai quem sentar causa menos desequilíbrio no time que fica em
+            campo.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Se mesmo assim não der pra cumprir "ninguém repete banco" (banco pequeno, mas o elenco daquele momento não
+            permite), o app não resolve isso escondido: mostra um aviso dizendo quem ficou preso na regra. Nesse caso,
+            considere ativar mais jogadores de linha ou reduzir o número de times.
+          </p>
+        </Section>
       </div>
     </div>
   );

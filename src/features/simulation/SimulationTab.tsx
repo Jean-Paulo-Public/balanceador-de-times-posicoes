@@ -5,7 +5,9 @@ import { LINE_POSITIONS, type LinePosition } from '../../domain/positions';
 import { FieldMapV2 } from './FieldMapV2';
 import { teamTactics } from './tactics';
 import { buildFieldMapsImage } from './fieldMapImage';
-import { Play, AlertTriangle, MessageCircle, Image as ImageIcon } from 'lucide-react';
+import { ScenarioList } from './ScenarioList';
+import { formatScenarioPosition } from './scenarioSummary';
+import { Play, AlertTriangle, MessageCircle, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import styles from './SimulationTab.module.css';
 
 const suggestTeams = (activePlayersCount: number) => (activePlayersCount <= 17 ? 2 : 3);
@@ -85,6 +87,7 @@ export function SimulationTab() {
   const [selB, setSelB] = useState('');
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [infeasibilityMessage, setInfeasibilityMessage] = useState<string | null>(null);
+  const [candidatesEvaluated, setCandidatesEvaluated] = useState<number | null>(null);
   const current = results[resultIdx] ?? null;
 
   const maxFeasibleTeams = Math.max(1, Math.floor(activePlayersCount / 6));
@@ -96,9 +99,11 @@ export function SimulationTab() {
     setHasSimulated(true);
     setTimeout(() => {
       const out = balanceTeamsOptions(players, numTeams, { neverScaleGoalkeepers, separatePairs });
+      const report = getLastBalanceRunReport();
       setResults(out);
       setResultIdx(0);
-      setInfeasibilityMessage(out.length === 0 ? (getLastBalanceRunReport()?.feasibility.message ?? null) : null);
+      setInfeasibilityMessage(out.length === 0 ? (report?.feasibility.message ?? null) : null);
+      setCandidatesEvaluated(report?.candidatesEvaluated ?? null);
       setIsSimulating(false);
     }, 50);
   };
@@ -226,9 +231,21 @@ export function SimulationTab() {
               <div className={styles.rosterActions}>
                 {results.length > 1 && (
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <button className="btn-secondary" onClick={() => setResultIdx((i) => (i - 1 + results.length) % results.length)}>‹</button>
-                    <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap' }}>Opção {resultIdx + 1}/{results.length}</span>
-                    <button className="btn-secondary" onClick={() => setResultIdx((i) => (i + 1) % results.length)}>›</button>
+                    <button
+                      className="btn-secondary" aria-label="Cenário anterior"
+                      onClick={() => setResultIdx((i) => Math.max(0, i - 1))}
+                      disabled={resultIdx === 0}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{formatScenarioPosition(resultIdx, results.length)}</span>
+                    <button
+                      className="btn-secondary" aria-label="Próximo cenário"
+                      onClick={() => setResultIdx((i) => Math.min(results.length - 1, i + 1))}
+                      disabled={resultIdx === results.length - 1}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
                   </div>
                 )}
                 <button className="btn-secondary" onClick={handleExportFieldImage} disabled={isExportingImage}>
@@ -239,6 +256,12 @@ export function SimulationTab() {
                 </button>
               </div>
             </div>
+            <ScenarioList
+              results={results}
+              selectedIndex={resultIdx}
+              onSelect={setResultIdx}
+              candidatesEvaluated={candidatesEvaluated}
+            />
             {current.separationViolations.length > 0 && (
               <p className={styles.errorHint} style={{ marginBottom: 12 }}>
                 ⚠️ Não deu pra separar sem desequilibrar muito: {current.separationViolations.join(', ')}.
@@ -247,6 +270,11 @@ export function SimulationTab() {
             {current.goalkeeperWarnings.length > 0 && (
               <p className={styles.errorHint} style={{ marginBottom: 12 }}>
                 ⚠️ {current.goalkeeperWarnings.join(' ')}
+              </p>
+            )}
+            {current.benchWarnings.length > 0 && (
+              <p className={styles.errorHint} style={{ marginBottom: 12 }}>
+                ⚠️ {current.benchWarnings.join(' ')}
               </p>
             )}
             {current.teams.map((t) => <TeamBlock key={t.id} team={t} />)}

@@ -16,7 +16,7 @@ import type { Player, SimulationResult } from '../domain/types';
 import type { LinePosition } from '../domain/positions';
 import { effectiveAttributesBase, effectiveGk } from './playerModel';
 import { ovr, potencialAtaque, estabilidadeDefensiva, coberturaGol } from './scoring';
-import { chooseBestSystem, type FormationShape, type FieldZone } from './formationModel';
+import { chooseBestSystem, createFormationCache, type FormationCache, type FormationShape, type FieldZone } from './formationModel';
 import { buildTeamSchedule } from './rotation';
 import { generateTeams } from './generateTeams';
 import { checkPositionFeasibility, type FeasibilityResult } from './feasibility';
@@ -74,6 +74,7 @@ interface TeamMetrics {
   fitQuality: number;       // qualidade média do encaixe no sistema, MÉDIA dos 6 jogos
   feasible: boolean;
   goalkeeperWarning: string | null;
+  benchWarning: string | null;
 }
 
 /** Jogadores aptos ao gol que revezam neste time (reservado + aptos na linha). */
@@ -81,22 +82,22 @@ const rotatingGks = (t: DivTeam): RP[] =>
   [t.gk, ...t.line].filter((r): r is RP => !!r && r.player.isGoalkeeper && r.gk != null);
 
 /** Inferência "geral" (jogo-base, sem rotação) — usada pro resumo/tática/roster exibidos. */
-const baseInference = (t: DivTeam) => chooseBestSystem(t.line.map((r) => r.player));
+const baseInference = (t: DivTeam, cache?: FormationCache) => chooseBestSystem(t.line.map((r) => r.player), cache);
 
 /**
  * Métricas de um time = MÉDIA sobre os 6 jogos do rodízio (Fase 6): reaproveita
  * `buildTeamSchedule` (que já reinfere o sistema por jogo, aplica a fila do
  * goleiro com a regra do Jogo 1, e escalona o banco) sobre a escalação-base.
  */
-const teamMetrics = (t: DivTeam, neverGk: boolean): TeamMetrics => {
+const teamMetrics = (t: DivTeam, neverGk: boolean, cache?: FormationCache): TeamMetrics => {
   if (t.line.length !== 6) {
     const lineAttrs = t.line.map((r) => r.attrs);
     return {
       geral: mean(lineAttrs.map((a) => ovr(a, 'Geral'))), off: 0, def: 0, recuo: 0, pressao: 0,
-      cobertura: null, fitQuality: -100, feasible: false, goalkeeperWarning: null,
+      cobertura: null, fitQuality: -100, feasible: false, goalkeeperWarning: null, benchWarning: null,
     };
   }
-  const inf = baseInference(t);
+  const inf = baseInference(t, cache);
   const rot = rotatingGks(t);
   const fielding = !neverGk && rot.length > 0;
 
@@ -121,7 +122,7 @@ const teamMetrics = (t: DivTeam, neverGk: boolean): TeamMetrics => {
     },
   };
 
-  const sched = buildTeamSchedule(provisional, 6);
+  const sched = buildTeamSchedule(provisional, 6, cache);
   // Nota de goleiro por jogador — a nota do goleiro é INDEPENDENTE: não é
   // afetada por nenhum outro atributo e não afeta nenhuma outra métrica.
   const gkOf = new Map(
@@ -180,6 +181,7 @@ const teamMetrics = (t: DivTeam, neverGk: boolean): TeamMetrics => {
     fitQuality: mean(gameMetrics.map((g) => g.fitQuality)),
     feasible: gameMetrics.every((g) => g.feasible),
     goalkeeperWarning: sched.goalkeeperWarning,
+    benchWarning: sched.benchWarning,
   };
 };
 
@@ -213,8 +215,8 @@ const teamOfIdMap = (teams: DivTeam[]): Map<string, number> => {
 };
 
 /** Custo de uma divisão: variância ponderada das métricas (médias de 6 jogos) entre os times + penalidades. */
-const divisionCost = (teams: DivTeam[], neverGk: boolean, separate: [string, string][] = []): number => {
-  const ms = teams.map((t) => teamMetrics(t, neverGk));
+const divisionCost = (teams: DivTeam[], neverGk: boolean, separate: [string, string][] = [], cache?: FormationCache): number => {
+  const ms = teams.map((t) => teamMetrics(t, neverGk, cache));
   let c = 0;
   c += W.geral * variance(ms.map((m) => m.geral));
   c += W.off * variance(ms.map((m) => m.off));
@@ -242,9 +244,9 @@ const divisionCost = (teams: DivTeam[], neverGk: boolean, separate: [string, str
 // ---------------------------------------------------------------------------
 
 const localSearch = (
-  teams: DivTeam[], neverGk: boolean, separate: [string, string][], maxIter = 60,
+  teams: DivTeam[], neverGk: boolean, separate: [string, string][], cache?: FormationCache, maxIter = 60,
 ): void => {
-  let cur = divisionCost(teams, neverGk, separate);
+  let cur = divisionCost(teams, neverGk, separate, cache);
   for (let iter = 0; iter < maxIter; iter++) {
     let bestDelta = -1e-6;
     let best: [number, number, number, number] | null = null;
@@ -256,7 +258,7 @@ const localSearch = (
             const B = teams[j].line[b];
             teams[i].line[a] = B;
             teams[j].line[b] = A;
-            const nc = divisionCost(teams, neverGk, separate);
+            const nc = divisionCost(teams, neverGk, separate, cache);
             teams[i].line[a] = A; // desfaz
             teams[j].line[b] = B;
             const delta = nc - cur;
@@ -334,12 +336,14 @@ export interface BalanceResult {
   separationViolations: string[];
   /** Avisos da fila do goleiro (Jogo 1 sem atacante) — um por time que precisou ceder a regra. */
   goalkeeperWarnings: string[];
+  /** Avisos do rodízio de banco (regra hard de não repetir, quando o banco do time é pequeno) — um por time que precisou ceder a regra. */
+  benchWarnings: string[];
 }
 
 const round = (n: number): number => Math.round(n);
 
-const buildBalancedTeam = (t: DivTeam, neverGk: boolean): BalancedTeam => {
-  const inf = baseInference(t);
+const buildBalancedTeam = (t: DivTeam, neverGk: boolean, cache?: FormationCache): BalancedTeam => {
+  const inf = baseInference(t, cache);
   const slots: BalancedSlot[] = inf.assignments.map((a) => ({
     player: t.line[a.playerIndex].player,
     role: a.identity,
@@ -349,7 +353,7 @@ const buildBalancedTeam = (t: DivTeam, neverGk: boolean): BalancedTeam => {
     y: a.y,
   }));
   const rot = rotatingGks(t);
-  const m = teamMetrics(t, neverGk);
+  const m = teamMetrics(t, neverGk, cache);
   return {
     id: t.id,
     name: t.name,
@@ -420,6 +424,11 @@ export const balanceTeamsOptions = (
 
   const resolved = new Map<string, RP>(active.map((p) => [p.id, resolvePlayer(p)]));
 
+  // Cache de memoização de sistema tático (Otimização 1 do diagnóstico de
+  // performance): vive SÓ por esta chamada — criado aqui, nunca fora dela.
+  // Ver `FormationCache` em formationModel.ts para o porquê do escopo.
+  const cache = createFormationCache();
+
   // Reduz o nº de divisões candidatas quando o elenco é grande (custo por
   // candidata cresce com numTeams pela reinferência de 6 jogos); mantém a
   // qualidade do solver (húngaro é exato) e só corta o Nº de sementes.
@@ -451,7 +460,7 @@ export const balanceTeamsOptions = (
 
   // ordena candidatos por custo; pega as melhores DISTINTAS como sementes
   const scored = divisions
-    .map((teams) => ({ teams, cost: divisionCost(teams, neverGk, separate) }))
+    .map((teams) => ({ teams, cost: divisionCost(teams, neverGk, separate, cache) }))
     .sort((a, b) => a.cost - b.cost);
 
   const seeds: DivTeam[][] = [];
@@ -468,11 +477,11 @@ export const balanceTeamsOptions = (
   const out: BalanceResult[] = [];
   const postSeen = new Set<string>();
   for (const teams of seeds) {
-    localSearch(teams, neverGk, separate);
+    localSearch(teams, neverGk, separate, cache);
     const sig = membershipSig(teams);
     if (postSeen.has(sig)) continue;
     postSeen.add(sig);
-    out.push(finalize(teams, neverGk, separate));
+    out.push(finalize(teams, neverGk, separate, cache));
   }
 
   const elapsedMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
@@ -487,8 +496,8 @@ export const balanceTeams = (
   options: BalanceOptions = {},
 ): BalanceResult | null => balanceTeamsOptions(players, numTeams, options)[0] ?? null;
 
-const finalize = (teams: DivTeam[], neverGk: boolean, separate: [string, string][]): BalanceResult => {
-  const built = teams.map((t) => buildBalancedTeam(t, neverGk));
+const finalize = (teams: DivTeam[], neverGk: boolean, separate: [string, string][], cache?: FormationCache): BalanceResult => {
+  const built = teams.map((t) => buildBalancedTeam(t, neverGk, cache));
   const gap = (sel: (b: BalancedTeam) => number): number => {
     const vals = built.map(sel);
     return round(Math.max(...vals) - Math.min(...vals));
@@ -500,12 +509,16 @@ const finalize = (teams: DivTeam[], neverGk: boolean, separate: [string, string]
   const separationViolations = separate
     .filter(([a, b]) => { const ta = teamOf.get(a); const tb = teamOf.get(b); return ta != null && tb != null && ta === tb; })
     .map(([a, b]) => `${nameOf.get(a) ?? a} & ${nameOf.get(b) ?? b}`);
-  const goalkeeperWarnings = teams
-    .map((t) => teamMetrics(t, neverGk).goalkeeperWarning)
+  const allMetrics = teams.map((t) => teamMetrics(t, neverGk, cache));
+  const goalkeeperWarnings = allMetrics
+    .map((m) => m.goalkeeperWarning)
+    .filter((w): w is string => !!w);
+  const benchWarnings = allMetrics
+    .map((m) => m.benchWarning)
     .filter((w): w is string => !!w);
   return {
     teams: built,
-    cost: round(divisionCost(teams, neverGk, separate) * 100) / 100,
+    cost: round(divisionCost(teams, neverGk, separate, cache) * 100) / 100,
     gaps: {
       def: gap((b) => b.metrics.def),
       off: gap((b) => b.metrics.off),
@@ -516,5 +529,6 @@ const finalize = (teams: DivTeam[], neverGk: boolean, separate: [string, string]
     },
     separationViolations,
     goalkeeperWarnings,
+    benchWarnings,
   };
 };

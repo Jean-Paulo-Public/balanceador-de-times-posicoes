@@ -1,19 +1,21 @@
 import type { AttributeOverrides, Player, Position } from '../domain/types';
 import type { AttrVector, AttributeKey } from '../domain/attributes';
-import { clampRating, DEFAULT_RATING } from '../domain/playerAttributes';
 import { ALL_ATTRIBUTE_KEYS, clampAttr } from '../domain/attributes';
-import { deriveAttributesFromStar, deriveGkFromStar } from '../domain/deriveAttributes';
 import { ALL_LINE_POSITIONS, BOX_TO_BOX, type LinePosition, type PositionPreference, type PositionPreferenceEntry } from '../domain/positions';
 
 /**
- * Normalização de jogadores carregados/importados: garante o shape v6 atual
- * — `attributes`/`gk` sempre presentes. Quando o jogador já tem `attributes`
- * v2 válidos, eles são preservados intactos (nunca re-derivados). Quando o
- * jogador é puramente legado (só rating + posição + as 4 flags antigas —
- * `pivotFriendly`/`recompoePouco`/`boaSaidaDeBola`/`veloz`), os atributos e a
- * nota de goleiro são semeados a partir da estrela via
- * `deriveAttributesFromStar`/`deriveGkFromStar`, e as flags são descartadas —
- * elas não existem mais no shape de `Player` (ver domain/types.ts).
+ * Validação ESTRITA de um jogador no shape ATUAL (v9 — sem `rating`, sem
+ * escala de estrela, sem derivação a partir de nada). Não existe mais cadeia
+ * de migração incremental (v5→v6→v7→v8): o PORTÃO de versão do store
+ * (`usePlayerStore.ts`) já descarta TODO o estado persistido que não seja
+ * exatamente da versão atual, então o único trabalho daqui é validar um
+ * registro que JÁ deveria estar no shape atual (dado corrompido/editado à mão
+ * no localStorage, ou um JSON importado).
+ *
+ * ESTRITO de propósito: um registro malformado é DESCARTADO (devolve `null`),
+ * nunca "consertado" inventando valor. Em particular, `attributes` e `gk`
+ * têm de validar por inteiro — não há mais fallback de derivação a partir de
+ * uma estrela (essa escala não existe mais no domínio).
  */
 
 const VALID_POSITIONS: Position[] = ['DEFENSOR', 'MEIA', 'ATACANTE'];
@@ -24,11 +26,6 @@ interface RawPlayer {
   active?: unknown;
   isGoalkeeper?: unknown;
   position?: unknown;
-  rating?: unknown;
-  pivotFriendly?: unknown;
-  recompoePouco?: unknown;
-  boaSaidaDeBola?: unknown;
-  veloz?: unknown;
   attributes?: unknown;
   gk?: unknown;
   handicapPct?: unknown;
@@ -51,6 +48,8 @@ const isValidPositionValue = (v: unknown): v is PositionPreference =>
  *  - todas as entradas eram malformadas (lista filtrada ficou vazia);
  *  - NENHUMA entrada restante está habilitada (estado inválido — jogador sem
  *    posição jogável nunca é aceito silenciosamente).
+ * (Este default NÃO é "conserto de dado malformado" — é a política de
+ * domínio documentada para "sem preferência cadastrada": coringa.)
  */
 export const parseAcceptedPositions = (x: unknown): PositionPreferenceEntry[] | undefined => {
   if (!Array.isArray(x) || x.length === 0) return undefined;
@@ -68,10 +67,10 @@ export const parseAcceptedPositions = (x: unknown): PositionPreferenceEntry[] | 
 };
 
 /**
- * Valida um `attributes` bruto: só é aceito se for um objeto com as 8 chaves
+ * Valida um `attributes` bruto: só é aceito se for um objeto com as 9 chaves
  * numéricas de AttrVector — TODAS presentes. Se faltar ou vier de tipo
- * inválido, devolve `undefined` (não inventa/preenche default por chave) para
- * que o motor derive via `deriveAttributesFromStar`.
+ * inválido, devolve `undefined` — quem chama DESCARTA o registro inteiro
+ * (não há mais fallback de derivação).
  */
 export const parseAttrVector = (x: unknown): AttrVector | undefined => {
   if (!x || typeof x !== 'object') return undefined;
@@ -132,34 +131,32 @@ const asPosition = (value: unknown): Position =>
 
 const asBool = (value: unknown): boolean => (typeof value === 'boolean' ? value : false);
 
-export const normalizePlayer = (raw: RawPlayer | Player): Player => {
+/**
+ * Valida um jogador bruto no shape ATUAL. Devolve `null` (DESCARTA o registro
+ * inteiro) quando `attributes` ou `gk` não validam — são os dois campos cuja
+ * ausência antes disparava a derivação a partir da estrela; agora não há pra
+ * onde cair, então o registro malformado simplesmente não entra no roster.
+ * Campos cosméticos (`id`/`name`/`active`/`isGoalkeeper`/`position`) seguem
+ * com default sensato quando ausentes — isso não é "inventar dado de
+ * balanceamento", é só a política de import/normalização de sempre.
+ */
+export const normalizePlayer = (raw: RawPlayer | Player | null | undefined): Player | null => {
   const r = (raw ?? {}) as RawPlayer;
-  const isGoalkeeper = asBool(r.isGoalkeeper);
-  const position = asPosition(r.position);
-  const rating = typeof r.rating === 'number' ? clampRating(r.rating) : DEFAULT_RATING;
 
-  // Preserva atributos v2 já válidos intactos; só semeia (deriva da estrela +
-  // flags legadas) quando o jogador ainda não tem `attributes`/`gk` v2.
-  const attributes = parseAttrVector(r.attributes) ?? deriveAttributesFromStar(rating, position, {
-    pivotFriendly: asBool(r.pivotFriendly),
-    recompoePouco: asBool(r.recompoePouco),
-    boaSaidaDeBola: asBool(r.boaSaidaDeBola),
-    veloz: asBool(r.veloz),
-  });
-  // `??` não serve aqui: `null` é um valor v2 válido (não joga no gol) que não
-  // pode ser confundido com "ausente" (que dispararia a derivação da estrela).
+  const attributes = parseAttrVector(r.attributes);
+  if (!attributes) return null; // sem atributos v2 válidos — descartado, não consertado
+
   const parsedGk = parseGk(r.gk);
-  const gk = parsedGk !== undefined ? parsedGk : deriveGkFromStar(rating, isGoalkeeper);
+  if (parsedGk === undefined) return null; // gk ausente/inválido — descartado
 
   const player: Player = {
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
     name: typeof r.name === 'string' && r.name ? r.name : 'Jogador',
     active: typeof r.active === 'boolean' ? r.active : true,
-    isGoalkeeper,
-    position,
-    rating,
+    isGoalkeeper: asBool(r.isGoalkeeper),
+    position: asPosition(r.position),
     attributes,
-    gk,
+    gk: parsedGk,
     acceptedPositions: parseAcceptedPositions(r.acceptedPositions) ?? [{ position: BOX_TO_BOX, enabled: true }],
   };
   const handicapPct = parseHandicapPct(r.handicapPct);
@@ -169,7 +166,10 @@ export const normalizePlayer = (raw: RawPlayer | Player): Player => {
   return player;
 };
 
+/** Valida a lista inteira, DESCARTANDO (filtrando) cada registro malformado individualmente. */
 export const normalizePlayers = (players: unknown): Player[] => {
   if (!Array.isArray(players)) return [];
-  return players.map(p => normalizePlayer(p as RawPlayer));
+  return players
+    .map((p) => normalizePlayer(p as RawPlayer))
+    .filter((p): p is Player => p !== null);
 };

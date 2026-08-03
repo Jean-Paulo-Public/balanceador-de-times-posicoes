@@ -1,5 +1,5 @@
-// Atributos "efetivos" de um jogador: parte dos atributos base (ou derivados da
-// estrela, para dados legados), aplica a SOBRESCRITA por posição de linha
+// Atributos "efetivos" de um jogador: parte dos atributos base (0–100, única
+// fonte de verdade), aplica a SOBRESCRITA por posição de linha
 // (modelo v3.1 — "tem jogadores melhores de finalização mais perto do gol") e
 // por fim a redução temporária por lesão (`handicapPct`). Ordem SEMPRE:
 // base -> sobrescrita da posição -> lesão (a lesão reduz por último, para que
@@ -10,7 +10,7 @@
 // nomeadas, de propósito explícito:
 //  - `effectiveAttributesBase(p)`  — SEM contexto de posição (base + lesão).
 //    Use para o que não deve variar por posição de linha: overall exibido no
-//    card, rating derivado, traços globais (isPivot/isFast/...).
+//    card, traços globais (isPivot/isFast/...).
 //  - `effectiveAttributes(p, position)` — NUMA posição de linha específica
 //    (modelo v3). Use para pontuar o encaixe numa vaga (o solver húngaro em
 //    formationModel.ts usa isso em cada célula da matriz de custo).
@@ -18,16 +18,14 @@
 import type { Player } from '../domain/types';
 import type { AttrVector } from '../domain/attributes';
 import { ALL_ATTRIBUTE_KEYS, clampAttr } from '../domain/attributes';
-import { deriveAttributesFromStar, deriveGkFromStar } from '../domain/deriveAttributes';
 import { ovr, naturalRole } from './scoring';
 import {
   ALL_LINE_POSITIONS, BOX_TO_BOX, enabledLinePositions, hasEnabledBoxToBox,
   isAttackingPosition, linePositionFit, type LinePosition,
 } from '../domain/positions';
 
-/** Atributos base (do jogador, ou derivados da estrela quando ainda não editados). */
-export const baseAttributes = (p: Player): AttrVector =>
-  p.attributes ?? deriveAttributesFromStar(p.rating, p.position);
+/** Atributos base do jogador (fonte de verdade — nunca derivados). */
+export const baseAttributes = (p: Player): AttrVector => p.attributes;
 
 const factorOf = (p: Player): number =>
   1 - Math.max(0, Math.min(100, p.handicapPct ?? 0)) / 100;
@@ -70,9 +68,8 @@ export const effectiveAttributesBase = (p: Player): AttrVector =>
 export const effectiveAttributes = (p: Player, position: LinePosition): AttrVector =>
   applyHandicap(attributesForPosition(p, position), factorOf(p));
 
-/** Nota de goleiro base (ou derivada da estrela). */
-export const baseGk = (p: Player): number | null =>
-  p.gk ?? deriveGkFromStar(p.rating, p.isGoalkeeper);
+/** Nota de goleiro base (fonte de verdade — nunca derivada). */
+export const baseGk = (p: Player): number | null => p.gk;
 
 /** Nota de goleiro após a redução por lesão. */
 export const effectiveGk = (p: Player): number | null => {

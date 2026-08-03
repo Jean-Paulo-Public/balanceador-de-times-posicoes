@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateTeams, generateProposals, pickImprovisedAttacker } from './generateTeams';
-import { isPivot, isFast, hasGoodBuildUp, hasLowRecovery } from './playerModel';
+import { isPivot, isFast, hasGoodBuildUp, hasLowRecovery, overallOf } from './playerModel';
 import type { SimulationResult, Team, Player } from '../domain/types';
 import {
   makePlayer,
@@ -42,17 +42,17 @@ describe('generateTeams — regras básicas', () => {
   });
 
   it('devolve vazio quando não há jogadores suficientes', () => {
-    expect(generateTeams([makePlayer('MEIA', 3)], 2, { numSimulations: SIMS })).toEqual([]);
+    expect(generateTeams([makePlayer('MEIA', 60)], 2, { numSimulations: SIMS })).toEqual([]);
   });
 });
 
 describe('generateTeams — teto de 4 atacantes', () => {
   it('nunca escala mais de 4 atacantes de origem em nenhum time', () => {
     const pool = [
-      makeGoalkeeper(4), makeGoalkeeper(4),
-      ...Array.from({ length: 10 }, () => makePlayer('ATACANTE', 4)),
-      ...Array.from({ length: 3 }, () => makePlayer('DEFENSOR', 4)),
-      ...Array.from({ length: 3 }, () => makePlayer('MEIA', 4)),
+      makeGoalkeeper(80), makeGoalkeeper(80),
+      ...Array.from({ length: 10 }, () => makePlayer('ATACANTE', 80)),
+      ...Array.from({ length: 3 }, () => makePlayer('DEFENSOR', 80)),
+      ...Array.from({ length: 3 }, () => makePlayer('MEIA', 80)),
     ];
     const results = generateTeams(pool, 2, { numSimulations: SIMS });
     expect(results.length).toBeGreaterThan(0);
@@ -85,14 +85,14 @@ describe('generateTeams — arranjo do campinho', () => {
       const defStarters = team.players.filter(tp => tp.roleShort === 'DEF' && tp.player.position === 'DEFENSOR');
       const defInMid = midfieldersByPosition(team).filter(tp => tp.player.position === 'DEFENSOR');
       if (defStarters.length && defInMid.length) {
-        expect(Math.min(...defStarters.map(tp => tp.player.rating)))
-          .toBeGreaterThanOrEqual(Math.max(...defInMid.map(tp => tp.player.rating)));
+        expect(Math.min(...defStarters.map(tp => overallOf(tp.player))))
+          .toBeGreaterThanOrEqual(Math.max(...defInMid.map(tp => overallOf(tp.player))));
       }
       const ataStarters = team.players.filter(tp => tp.roleShort === 'ATA' && tp.player.position === 'ATACANTE');
       const ataInMid = lineOf(team).filter(tp => tp.roleShort === 'MEI' && tp.player.position === 'ATACANTE');
       if (ataStarters.length && ataInMid.length) {
-        expect(Math.min(...ataStarters.map(tp => tp.player.rating)))
-          .toBeGreaterThanOrEqual(Math.max(...ataInMid.map(tp => tp.player.rating)));
+        expect(Math.min(...ataStarters.map(tp => overallOf(tp.player))))
+          .toBeGreaterThanOrEqual(Math.max(...ataInMid.map(tp => overallOf(tp.player))));
       }
     }
   });
@@ -127,41 +127,45 @@ describe('generateTeams — improviso de atacante (meia sobe)', () => {
 });
 
 describe('pickImprovisedAttacker — prioridade dos traços (v2)', () => {
-  const mid = (rating: number, overrides: Partial<Player> & { traits?: TestTraits } = {}) =>
-    makePlayer('MEIA', rating, overrides);
+  const mid = (overall: number, overrides: Partial<Player> & { traits?: TestTraits } = {}) =>
+    makePlayer('MEIA', overall, overrides);
 
-  it('pivô tem prioridade mesmo sobre um meia de mais estrelas', () => {
+  it('pivô tem prioridade mesmo sobre um meia de overall maior', () => {
+    const pivotCandidate = mid(80, { traits: { pivot: true } });
     const chosen = pickImprovisedAttacker([
-      mid(5), mid(4, { traits: { pivot: true } }), mid(3, { traits: { lowRecovery: true } }),
+      mid(100), pivotCandidate, mid(60, { traits: { lowRecovery: true } }),
     ]);
     expect(chosen && isPivot(chosen)).toBe(true);
-    expect(chosen?.rating).toBe(4);
+    expect(chosen?.id).toBe(pivotCandidate.id);
   });
 
-  it('com vários pivôs, escolhe o de mais estrelas', () => {
+  it('com vários pivôs, escolhe o de maior overall', () => {
+    const melhorPivot = mid(90, { traits: { pivot: true } });
     const chosen = pickImprovisedAttacker([
-      mid(3, { traits: { pivot: true } }), mid(4.5, { traits: { pivot: true } }),
+      mid(60, { traits: { pivot: true } }), melhorPivot,
     ]);
-    expect(chosen?.rating).toBe(4.5);
+    expect(chosen?.id).toBe(melhorPivot.id);
   });
 
   it('sem pivô, usa quem "recompõe pouco"', () => {
-    const chosen = pickImprovisedAttacker([mid(5), mid(3, { traits: { lowRecovery: true } })]);
+    const chosen = pickImprovisedAttacker([mid(100), mid(60, { traits: { lowRecovery: true } })]);
     expect(chosen && hasLowRecovery(chosen)).toBe(true);
   });
 
-  it('sem traço nenhum, escolhe o de mais estrelas', () => {
-    const chosen = pickImprovisedAttacker([mid(2), mid(4)]);
-    expect(chosen?.rating).toBe(4);
+  it('sem traço nenhum, escolhe o de maior overall', () => {
+    // 50 (não 40): num vetor UNIFORME, overall <= 40 dispararia hasLowRecovery
+    // (RCD <= 40) e mudaria de ramo — aqui o alvo é o fallback "sem traço".
+    const chosen = pickImprovisedAttacker([mid(50), mid(80)]);
+    expect(chosen && overallOf(chosen)).toBe(80);
   });
 });
 
 describe('generateTeams — improviso de defesa (meia > atacante)', () => {
   it('sem zagueiro de origem, o improvisado na zaga é um meia (preferência sobre atacante)', () => {
     const pool: Player[] = [
-      makeGoalkeeper(4), makeGoalkeeper(4),
-      ...Array.from({ length: 10 }, (_, i) => makePlayer('MEIA', 2 + (i % 4) * 0.5)),
-      ...Array.from({ length: 4 }, () => makePlayer('ATACANTE', 4)),
+      makeGoalkeeper(80), makeGoalkeeper(80),
+      ...Array.from({ length: 10 }, (_, i) => makePlayer('MEIA', 40 + (i % 4) * 10)),
+      ...Array.from({ length: 4 }, () => makePlayer('ATACANTE', 80)),
     ];
     const results = generateTeams(pool, 2, { numSimulations: SIMS, maxSixLinePlayers: true, enforcePositionMin: false });
     expect(results.length).toBeGreaterThan(0);
@@ -175,18 +179,18 @@ describe('generateTeams — improviso de defesa (meia > atacante)', () => {
 
 describe('generateTeams — spreadTraits (saída/veloz/pivô, modelo v2)', () => {
   const traitPool = (): Player[] => [
-    makeGoalkeeper(4), makeGoalkeeper(4),
-    makePlayer('DEFENSOR', 4, { traits: { goodBuildUp: true } }),
-    makePlayer('DEFENSOR', 4, { traits: { goodBuildUp: true } }),
-    makePlayer('DEFENSOR', 3.5, { traits: { fast: true } }),
-    makePlayer('DEFENSOR', 3.5, { traits: { fast: true } }),
-    makePlayer('MEIA', 4, { traits: { pivot: true } }),
-    makePlayer('MEIA', 3.5, { traits: { pivot: true } }),
-    makePlayer('MEIA', 3, { traits: { pivot: true } }),
-    makePlayer('MEIA', 3, { traits: { pivot: true } }),
-    makePlayer('MEIA', 3), makePlayer('MEIA', 2.5),
-    makePlayer('ATACANTE', 4), makePlayer('ATACANTE', 3.5),
-    makePlayer('ATACANTE', 3), makePlayer('ATACANTE', 2.5),
+    makeGoalkeeper(80), makeGoalkeeper(80),
+    makePlayer('DEFENSOR', 80, { traits: { goodBuildUp: true } }),
+    makePlayer('DEFENSOR', 80, { traits: { goodBuildUp: true } }),
+    makePlayer('DEFENSOR', 70, { traits: { fast: true } }),
+    makePlayer('DEFENSOR', 70, { traits: { fast: true } }),
+    makePlayer('MEIA', 80, { traits: { pivot: true } }),
+    makePlayer('MEIA', 70, { traits: { pivot: true } }),
+    makePlayer('MEIA', 60, { traits: { pivot: true } }),
+    makePlayer('MEIA', 60, { traits: { pivot: true } }),
+    makePlayer('MEIA', 60), makePlayer('MEIA', 50),
+    makePlayer('ATACANTE', 80), makePlayer('ATACANTE', 70),
+    makePlayer('ATACANTE', 60), makePlayer('ATACANTE', 50),
   ];
 
   it('espalha 1 "boa saída de bola" e 1 "veloz" por time (quando há o suficiente)', () => {
@@ -208,11 +212,11 @@ describe('generateTeams — spreadTraits (saída/veloz/pivô, modelo v2)', () =>
 
   it('com 2 pivôs e 2 times, no máximo 1 pivô por time', () => {
     const pool: Player[] = [
-      makeGoalkeeper(4), makeGoalkeeper(4),
-      makePlayer('DEFENSOR', 4), makePlayer('DEFENSOR', 3.5), makePlayer('DEFENSOR', 3), makePlayer('DEFENSOR', 2.5),
-      makePlayer('MEIA', 4, { traits: { pivot: true } }), makePlayer('MEIA', 3.5, { traits: { pivot: true } }),
-      makePlayer('MEIA', 3), makePlayer('MEIA', 3),
-      makePlayer('ATACANTE', 4), makePlayer('ATACANTE', 3.5), makePlayer('ATACANTE', 3), makePlayer('ATACANTE', 2.5),
+      makeGoalkeeper(80), makeGoalkeeper(80),
+      makePlayer('DEFENSOR', 80), makePlayer('DEFENSOR', 70), makePlayer('DEFENSOR', 60), makePlayer('DEFENSOR', 50),
+      makePlayer('MEIA', 80, { traits: { pivot: true } }), makePlayer('MEIA', 70, { traits: { pivot: true } }),
+      makePlayer('MEIA', 60), makePlayer('MEIA', 60),
+      makePlayer('ATACANTE', 80), makePlayer('ATACANTE', 70), makePlayer('ATACANTE', 60), makePlayer('ATACANTE', 50),
     ];
     const results = generateTeams(pool, 2, { numSimulations: SIMS, maxSixLinePlayers: true, spreadTraits: true });
     for (const r of results) for (const team of r.teams) {
@@ -221,17 +225,19 @@ describe('generateTeams — spreadTraits (saída/veloz/pivô, modelo v2)', () =>
   });
 });
 
-describe('generateTeams — equilíbrio por estrela', () => {
-  it('o melhor cenário mantém as médias de estrela próximas', () => {
+describe('generateTeams — equilíbrio por overall', () => {
+  it('o melhor cenário mantém as médias de overall próximas', () => {
     const results = generateTeams(buildBalancedPool(3), 3, { numSimulations: 400, maxSixLinePlayers: true });
     expect(results.length).toBeGreaterThan(0);
-    expect(spread(results[0].teams.map(t => t.overall))).toBeLessThanOrEqual(0.6);
+    // Limiares (0–100) equivalentes aos antigos 0,6/0,75 na escala de estrela
+    // 0–5 (×20 — mesma conversão de escala usada em todo o arquivo).
+    expect(spread(results[0].teams.map(t => t.overall))).toBeLessThanOrEqual(12);
   });
 
   it('espalha os craques num elenco desnivelado', () => {
     const results = generateTeams(buildSkewedPool(2), 2, { numSimulations: 400, maxSixLinePlayers: true });
     expect(results.length).toBeGreaterThan(0);
-    expect(spread(results[0].teams.map(t => t.overall))).toBeLessThanOrEqual(0.75);
+    expect(spread(results[0].teams.map(t => t.overall))).toBeLessThanOrEqual(15);
   });
 });
 

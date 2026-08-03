@@ -122,12 +122,19 @@ export const LINE_POSITIONS: Record<LinePosition, LinePositionMeta> = {
   LATERAL: {
     key: 'LATERAL', label: 'Lateral',
     help: 'Quase um fixo, mas sobe pra atacar na fase final — a velocidade paga a subida.',
-    weights: w(.02, .06, .06, .28, .18, .16, .06, .04, .14),
+    // Mesmo ajuste do FIXO, em escala menor: FIS .14 → .10, DEF .28 → .32.
+    weights: w(.02, .06, .06, .32, .18, .16, .06, .04, .10),
   },
   FIXO: {
     key: 'FIXO', label: 'Fixo',
-    help: 'Último homem — defesa e força física dominam, referência da zaga.',
-    weights: w(.00, .05, .02, .38, .06, .13, .03, .03, .30),
+    help: 'Último homem — marcação domina; a força física ajuda na dividida e na bola aérea, mas não substitui saber marcar.',
+    // FIS caiu de .30 para .15 e DEF subiu de .38 para .50 (decisão do dono):
+    // com FIS quase empatado com DEF, um PIVO (perfil FIN .32 / FIS .25) somava
+    // pontos suficientes pra ganhar a vaga de último homem mesmo com DEF baixa —
+    // "pivô virando fixo só porque é forte". Físico é MULTIPLICADOR de marcação,
+    // não substituto: só rende pra quem sabe usá-lo defendendo. Não foi zerado
+    // porque zagueiro fraco na dividida/bola aérea é problema real no Fut7.
+    weights: w(.00, .05, .02, .50, .06, .16, .03, .03, .15),
   },
 };
 

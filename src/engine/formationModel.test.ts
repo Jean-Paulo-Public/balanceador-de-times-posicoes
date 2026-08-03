@@ -12,15 +12,15 @@ const A = (o: Partial<AttrVector>): AttrVector =>
 
 let idc = 0;
 const bx = (attrs: AttrVector): Player => ({
-  id: `p${++idc}`, name: `p${idc}`, active: true, isGoalkeeper: false, position: 'MEIA', rating: 3,
+  id: `p${++idc}`, name: `p${idc}`, active: true, isGoalkeeper: false, position: 'MEIA',
   attributes: attrs, gk: null, acceptedPositions: allEnabled([BOX_TO_BOX]),
 });
 const pref = (attrs: AttrVector, positions: LinePosition[]): Player => ({
-  id: `p${++idc}`, name: `p${idc}`, active: true, isGoalkeeper: false, position: 'MEIA', rating: 3,
+  id: `p${++idc}`, name: `p${idc}`, active: true, isGoalkeeper: false, position: 'MEIA',
   attributes: attrs, gk: null, acceptedPositions: allEnabled(positions),
 });
 const withEntries = (attrs: AttrVector, entries: PositionPreferenceEntry[]): Player => ({
-  id: `p${++idc}`, name: `p${idc}`, active: true, isGoalkeeper: false, position: 'MEIA', rating: 3,
+  id: `p${++idc}`, name: `p${idc}`, active: true, isGoalkeeper: false, position: 'MEIA',
   attributes: attrs, gk: null, acceptedPositions: entries,
 });
 
