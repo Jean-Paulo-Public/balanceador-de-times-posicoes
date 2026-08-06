@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { computeDisplayOvrs, parseManualAttrInput, OVR_DISPLAY_ITEMS, defesaSemRecomposicao } from './ovrDisplay';
-import { emptyAttrs, OVR_WEIGHTS, type AttrVector } from '../../domain/attributes';
+import { computeDisplayOvrs, parseManualAttrInput, OVR_DISPLAY_ITEMS } from './ovrDisplay';
+import { emptyAttrs, type AttrVector } from '../../domain/attributes';
 
 describe('computeDisplayOvrs', () => {
   it('com atributos neutros (todos 50), todos os OVRs de linha dão 50', () => {
@@ -51,9 +51,39 @@ describe('computeDisplayOvrs', () => {
     expect(computeDisplayOvrs(attrs2, null).intensidade).toBe(67);
   });
 
-  it('OVR_DISPLAY_ITEMS tem as 6 chaves na ordem esperada com siglas de 3 letras', () => {
-    expect(OVR_DISPLAY_ITEMS.map((i) => i.key)).toEqual(['geral', 'ofensivo', 'recomposicao', 'intensidade', 'defensivo', 'goleiro']);
+  it('OVR_DISPLAY_ITEMS tem as 7 chaves na ordem esperada com siglas de 3 letras', () => {
+    expect(OVR_DISPLAY_ITEMS.map((i) => i.key)).toEqual(['geral', 'ofensivo', 'recomposicao', 'intensidade', 'ofensividade', 'defensivo', 'goleiro']);
     for (const item of OVR_DISPLAY_ITEMS) expect(item.abbr).toHaveLength(3);
+  });
+
+  it('cada sigla de chip é única (sem colisão entre overall e atributo-base)', () => {
+    const abbrs = OVR_DISPLAY_ITEMS.map((i) => i.abbr);
+    expect(new Set(abbrs).size).toBe(abbrs.length);
+  });
+});
+
+describe('OVR ATA inclui o atributo OFE com peso 0,32 (verificações numéricas do design)', () => {
+  it('jogador de referência com OFE 100 dá ATA 67', () => {
+    const attrs: AttrVector = {
+      FIN: 50, CRI: 20, DRI: 50, DEF: 20, VEL: 35, RCD: 35, INT: 75, MOV: 85, FIS: 75, OFE: 100,
+    };
+    expect(computeDisplayOvrs(attrs, null).ofensivo).toBe(67);
+  });
+
+  it('o mesmo jogador com OFE 50 dá ATA 51', () => {
+    const attrs: AttrVector = {
+      FIN: 50, CRI: 20, DRI: 50, DEF: 20, VEL: 35, RCD: 35, INT: 75, MOV: 85, FIS: 75, OFE: 50,
+    };
+    expect(computeDisplayOvrs(attrs, null).ofensivo).toBe(51);
+  });
+
+  it('todos os atributos em 50 (incluindo OFE) dão ATA 50', () => {
+    expect(computeDisplayOvrs(emptyAttrs(50), null).ofensivo).toBe(50);
+  });
+
+  it('todos em 0 e OFE 100 dão ATA 32 (só o peso do OFE conta)', () => {
+    const attrs: AttrVector = { ...emptyAttrs(0), OFE: 100 };
+    expect(computeDisplayOvrs(attrs, null).ofensivo).toBe(32);
   });
 });
 
@@ -87,7 +117,7 @@ describe('chip DEF ignora a recomposição (RCD zerado + reescala)', () => {
   // O RCD tem chip PRÓPRIO; contá-lo também no DEF mostrava o mesmo sinal duas
   // vezes. O RCD é zerado e o resultado reescalado por 1/(1 - peso do RCD),
   // então o chip mede só marcação/físico/resto — na mesma régua 0–100.
-  const base: AttrVector = { FIN: 50, CRI: 20, DRI: 50, DEF: 20, VEL: 35, RCD: 35, INT: 75, MOV: 85, FIS: 75 };
+  const base: AttrVector = { FIN: 50, CRI: 20, DRI: 50, DEF: 20, VEL: 35, RCD: 35, INT: 75, MOV: 85, FIS: 75, OFE: 50 };
 
   it('mudar SÓ o RCD não altera o chip DEF', () => {
     const a = computeDisplayOvrs({ ...base, RCD: 0 }, null).defensivo;
@@ -107,24 +137,27 @@ describe('chip DEF ignora a recomposição (RCD zerado + reescala)', () => {
   });
 
   it('jogador com tudo no máximo continua dando 100 (a escala segue 0–100)', () => {
-    const max: AttrVector = { FIN: 100, CRI: 100, DRI: 100, DEF: 100, VEL: 100, RCD: 100, INT: 100, MOV: 100, FIS: 100 };
+    const max: AttrVector = { FIN: 100, CRI: 100, DRI: 100, DEF: 100, VEL: 100, RCD: 100, INT: 100, MOV: 100, FIS: 100, OFE: 100 };
     expect(computeDisplayOvrs(max, null).defensivo).toBe(100);
   });
 });
 
-describe('DEF sem recomposição — reescala (regra de três)', () => {
-  it('o fator de reescala é 1/(1 - peso do RCD), não "+peso"', () => {
-    const soRcd: AttrVector = { FIN: 0, CRI: 0, DRI: 0, DEF: 0, VEL: 0, RCD: 100, INT: 0, MOV: 0, FIS: 0 };
-    // Só RCD alto: descontando a recomposição, sobra zero.
-    expect(computeDisplayOvrs(soRcd, null).defensivo).toBe(0);
+describe('chip DEF é o atributo de marcação PURO', () => {
+  // Decisão do dono: "conte somente a DEF no chip". Deixou de ser overall
+  // combinado — nada de recomposição, físico ou reescala. É o valor digitado.
+  const base: AttrVector = { FIN: 50, CRI: 20, DRI: 50, DEF: 20, VEL: 35, RCD: 35, INT: 75, MOV: 85, FIS: 75, OFE: 51 };
 
-    // Marcação no máximo e o resto zerado: peso .51 reescalado por 1/0,78.
-    const soDef: AttrVector = { FIN: 0, CRI: 0, DRI: 0, DEF: 100, VEL: 0, RCD: 0, INT: 0, MOV: 0, FIS: 0 };
-    expect(computeDisplayOvrs(soDef, null).defensivo).toBe(Math.round((100 * OVR_WEIGHTS.Defesa.DEF) / (1 - OVR_WEIGHTS.Defesa.RCD)));
+  it('mostra exatamente o atributo DEF', () => {
+    expect(computeDisplayOvrs(base, null).defensivo).toBe(20);
+    expect(computeDisplayOvrs({ ...base, DEF: 100 }, null).defensivo).toBe(100);
+    expect(computeDisplayOvrs({ ...base, DEF: 0 }, null).defensivo).toBe(0);
   });
 
-  it('a função pura bate com o chip exibido', () => {
-    const a: AttrVector = { FIN: 50, CRI: 20, DRI: 50, DEF: 20, VEL: 35, RCD: 35, INT: 75, MOV: 85, FIS: 75 };
-    expect(computeDisplayOvrs(a, null).defensivo).toBe(Math.round(defesaSemRecomposicao(a)));
+  it('nenhum outro atributo influencia o chip DEF', () => {
+    const alvo = computeDisplayOvrs(base, null).defensivo;
+    for (const k of ['RCD', 'FIS', 'CRI', 'MOV', 'VEL', 'INT', 'DRI', 'FIN', 'OFE'] as const) {
+      expect(computeDisplayOvrs({ ...base, [k]: 0 }, null).defensivo).toBe(alvo);
+      expect(computeDisplayOvrs({ ...base, [k]: 100 }, null).defensivo).toBe(alvo);
+    }
   });
 });

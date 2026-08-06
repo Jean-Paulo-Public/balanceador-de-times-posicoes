@@ -9,7 +9,7 @@ import {
 
 let idc = 0;
 const A = (o: Partial<AttrVector> = {}): AttrVector =>
-  ({ FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50, ...o });
+  ({ FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50, OFE: 50, ...o });
 
 const makePlayer = (overrides: Partial<Player> = {}): Player => ({
   id: `p${++idc}`, name: `P${idc}`, active: true, isGoalkeeper: false, position: 'MEIA',

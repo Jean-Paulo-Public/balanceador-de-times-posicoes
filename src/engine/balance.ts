@@ -252,7 +252,7 @@ export const teamMetrics = (
     const defMeanF = defF.length ? mean(defF) : 1;
 
     const defLinha = estabilidadeDefensiva(lineAttrs, DEF_STABILITY_BETA, defF);
-    const offPond = potencialAtaque(lineAttrs, 0.5, offF);
+    const offPond = potencialAtaque(lineAttrs, offF);
     // Versões de EXIBIÇÃO: desfazem o encolhimento médio causado pelos fatores,
     // devolvendo o número à régua 0–100. A nota do goleiro NÃO é renormalizada
     // (ela não sofreu fator de zona — goleiro é goleiro), por isso a combinação

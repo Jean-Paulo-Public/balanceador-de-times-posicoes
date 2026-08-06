@@ -8,24 +8,29 @@
 import type { Position } from './types';
 
 /**
- * As 9 dimensões de linha (0–100). GOL é tratado à parte (pode ser nulo).
+ * As 10 dimensões: 9 de linha (0–100) + 1 de ofensividade contextual.
+ * GOL é tratado à parte (pode ser nulo).
  *
  * REC ("Recomposição") foi removido e dividido em dois atributos-base:
  *  - RCD (Recomposição Defensiva) — recuo puro pra marcar.
  *  - INT (Intensidade) — pressão de meio-campo/ataque, saída de bola adversária.
  * Ver comentários em ATTRIBUTE_META abaixo para o porquê da separação.
+ *
+ * OFE (Ofensividade inteligente) é um novo atributo que descreve capacidade de
+ * reconhecer espaço, driblar quando pode, chutar quando é melhor opção — atacar com
+ * inteligência situacional.
  */
 export type AttributeKey =
-  | 'FIN' | 'CRI' | 'DRI' | 'DEF' | 'VEL' | 'RCD' | 'INT' | 'MOV' | 'FIS';
+  | 'FIN' | 'CRI' | 'DRI' | 'DEF' | 'VEL' | 'RCD' | 'INT' | 'MOV' | 'FIS' | 'OFE';
 
 export const ALL_ATTRIBUTE_KEYS: readonly AttributeKey[] = [
-  'FIN', 'CRI', 'DRI', 'DEF', 'VEL', 'RCD', 'INT', 'MOV', 'FIS',
+  'FIN', 'CRI', 'DRI', 'DEF', 'VEL', 'RCD', 'INT', 'MOV', 'FIS', 'OFE',
 ] as const;
 
 /** Vetor de atributos de um jogador (também usado como vetor de pesos). */
 export interface AttrVector {
   FIN: number; CRI: number; DRI: number; DEF: number;
-  VEL: number; RCD: number; INT: number; MOV: number; FIS: number;
+  VEL: number; RCD: number; INT: number; MOV: number; FIS: number; OFE: number;
 }
 
 export const ATTR_MIN = 0;
@@ -43,7 +48,7 @@ export const clampAttr = (v: number): number => {
 /** Cria um vetor completo de atributos com um valor default. */
 export const emptyAttrs = (value: number = ATTR_DEFAULT): AttrVector => ({
   FIN: value, CRI: value, DRI: value, DEF: value,
-  VEL: value, RCD: value, INT: value, MOV: value, FIS: value,
+  VEL: value, RCD: value, INT: value, MOV: value, FIS: value, OFE: value,
 });
 
 export interface AttributeMeta {
@@ -70,12 +75,13 @@ export const ATTRIBUTE_META: Record<AttributeKey, AttributeMeta> = {
   INT: { key: 'INT', label: 'Intensidade', help: 'Pressão no meio-campo e no ataque — marcar a saída de bola do adversário no campo dele. Não é o recuo defensivo (isso é Recomposição Defensiva).' },
   MOV: { key: 'MOV', label: 'Mobilidade', help: 'Desmarque, ocupação de espaço, movimento sem bola.' },
   FIS: { key: 'FIS', label: 'Físico/Força', help: 'Proteção de bola, dividida, duelo, jogo aéreo.' },
+  OFE: { key: 'OFE', label: 'Ofensividade', help: 'Ataque com inteligência situacional — reconhecer espaço, driblar quando pode, chutar quando é a melhor opção. Capacidade de atacar de forma contextualizada.' },
 };
 
 /**
  * Presets rápidos (botões de nível) para preencher qualquer atributo, incluindo
- * extremos. Clicar o mesmo rótulo em TODAS as 9 linhas de atributo iguala os 9
- * ao mesmo valor — como os pesos de cada OVR somam 1,00 (ver OVR_WEIGHTS),
+ * extremos. Clicar o mesmo rótulo em TODAS as 10 linhas de atributo iguala os
+ * 10 ao mesmo valor — como os pesos de cada OVR somam 1,00 (ver OVR_WEIGHTS),
  * isso faz o overall resultante dar exatamente esse valor (ex.: "Baixa" em
  * todos os atributos -> overall 35).
  */
@@ -106,11 +112,11 @@ export const ROLE_ZONE: Record<LineRoleKey, Zone> = {
   PIVO: 'ATA', SA: 'ATA',
 };
 
-/** Helper para escrever um vetor de pesos [FIN,CRI,DRI,DEF,VEL,RCD,INT,MOV,FIS]. */
+/** Helper para escrever um vetor de pesos [FIN,CRI,DRI,DEF,VEL,RCD,INT,MOV,FIS,OFE]. */
 const w = (
   FIN: number, CRI: number, DRI: number, DEF: number,
-  VEL: number, RCD: number, INT: number, MOV: number, FIS: number,
-): AttrVector => ({ FIN, CRI, DRI, DEF, VEL, RCD, INT, MOV, FIS });
+  VEL: number, RCD: number, INT: number, MOV: number, FIS: number, OFE: number,
+): AttrVector => ({ FIN, CRI, DRI, DEF, VEL, RCD, INT, MOV, FIS, OFE });
 
 export interface RoleMeta {
   key: LineRoleKey;
@@ -125,15 +131,17 @@ export interface RoleMeta {
 // com RCD dominante; ARM/ALA (zona MEI, mais ofensivos) ficam com INT
 // dominante; B2B (coringa de transição) fica com os dois quase equilibrados.
 export const ROLES: Record<LineRoleKey, RoleMeta> = {
-  // VEL .13 → .03 pelo mesmo motivo do OVR 'Defesa': marcar não é correr.
-  // FIS .15 → .10 / DEF .46 → .51, alinhado ao OVR 'Defesa' e ao FIXO.
-  MARC: { key: 'MARC', label: 'Marcador',         weights: w(.00, .07, .04, .51, .03, .16, .04, .05, .10) },
-  CONS: { key: 'CONS', label: 'Construtor',       weights: w(.03, .40, .13, .24, .04, .04, .02, .04, .06) },
-  B2B:  { key: 'B2B',  label: 'Box-to-box',       weights: w(.07, .18, .08, .20, .12, .11, .11, .07, .06) },
-  ARM:  { key: 'ARM',  label: 'Armador',          weights: w(.08, .36, .22, .04, .06, .01, .04, .15, .04) },
-  ALA:  { key: 'ALA',  label: 'Ala/Corredor',     weights: w(.10, .12, .12, .07, .26, .05, .12, .12, .04) },
-  PIVO: { key: 'PIVO', label: 'Pivô',             weights: w(.30, .17, .09, .05, .03, .02, .04, .12, .18) },
-  SA:   { key: 'SA',   label: 'Segundo atacante', weights: w(.30, .08, .17, .04, .16, .01, .06, .16, .02) },
+  // VEL .13 → .03 e FIS .15 → .10, com DEF subindo pra .51: marcar não é correr
+  // nem ser forte. Mesma calibragem aplicada em `LINE_POSITIONS.FIXO` — antes
+  // existia um OVR 'Defesa' com estes mesmos pesos, hoje removido (ver nota em
+  // OVR_WEIGHTS abaixo); este papel e o FIXO são o que restou dela.
+  MARC: { key: 'MARC', label: 'Marcador',         weights: w(.00, .07, .04, .51, .03, .16, .04, .05, .10, 0) },
+  CONS: { key: 'CONS', label: 'Construtor',       weights: w(.03, .40, .13, .24, .04, .04, .02, .04, .06, 0) },
+  B2B:  { key: 'B2B',  label: 'Box-to-box',       weights: w(.07, .18, .08, .20, .12, .11, .11, .07, .06, 0) },
+  ARM:  { key: 'ARM',  label: 'Armador',          weights: w(.08, .36, .22, .04, .06, .01, .04, .15, .04, 0) },
+  ALA:  { key: 'ALA',  label: 'Ala/Corredor',     weights: w(.10, .12, .12, .07, .26, .05, .12, .12, .04, 0) },
+  PIVO: { key: 'PIVO', label: 'Pivô',             weights: w(.30, .17, .09, .05, .03, .02, .04, .12, .18, 0) },
+  SA:   { key: 'SA',   label: 'Segundo atacante', weights: w(.30, .08, .17, .04, .16, .01, .06, .16, .02, 0) },
 };
 
 export const ALL_LINE_ROLES: readonly LineRoleKey[] = [
@@ -167,29 +175,40 @@ export const ALLOWED_ZONES: Record<Position, Zone[]> = {
 // seria confusão garantida (dois números diferentes com o mesmo rótulo). O
 // chip de listagem que mostrava esse OVR passou a mostrar o atributo RCD
 // direto (ver src/features/players/ovrDisplay.ts).
-export type OvrKey = 'Geral' | 'Ataque' | 'Defesa' | 'Construcao' | 'Mobilidade';
+export type OvrKey = 'Geral' | 'ATA' | 'Construcao' | 'Mobilidade';
 
 // Pesos verificados: cada linha soma 1,00 (ver Seção 5 do design). O antigo
 // peso único de REC foi dividido entre RCD e INT pela intenção de cada OVR:
 // Defesa é "solidez pura de marcação" -> RCD dominante; Mobilidade é
 // movimento/pressão sem bola -> INT dominante; Geral/Construção ficam quase
 // equilibrados entre os dois.
+// ATA agora inclui OFE (Ofensividade inteligente) com peso 0.32, redistribuindo
+// os outros pesos por fator 0.68 para manter soma = 1,00.
 export const OVR_WEIGHTS: Record<OvrKey, AttrVector> = {
-  Geral:       w(.15, .16, .12, .16, .10, .06, .05, .09, .11),
-  Ataque:      w(.32, .15, .17, .00, .10, .00, .03, .15, .08),
-  // VEL caiu de .13 para .03: com .13 a velocidade pesava MAIS que a própria
-  // defesa num jogador de DEF baixo (ex.: DEF 20 + VEL 100 exibia "Defesa 41",
-  // sendo 13 pontos só de velocidade contra 8 de defesa). Mesma lógica que
-  // separou RCD de VEL: ser rápido não é defender. Os .10 foram pra DEF e RCD.
-  // FIS .15 → .10 e DEF .46 → .51: físico estava sobrevalorizado no número
-  // defensivo (mesma razão do ajuste em LINE_POSITIONS.FIXO) — ser forte não é
-  // marcar. O físico segue contando, só não decide.
-  Defesa:      w(.00, .05, .02, .51, .03, .22, .02, .05, .10),
-  Construcao:  w(.03, .44, .17, .11, .03, .02, .03, .09, .08),
-  Mobilidade:  w(.10, .07, .12, .04, .28, .03, .12, .19, .05),
+  // OFE entrou no Geral com a MESMA regra de três usada no ATA (decisão do dono):
+  // o grupo "não-defensivo" (FIN, CRI, DRI, VEL, INT, MOV, FIS) somava .78; ele
+  // encolheu por fator .68 e o OFE ficou com 32% desse grupo (.32 × .78 = .2496).
+  // DEF (.16) e RCD (.06) NÃO foram tocados — o grupo continua somando .78 e o
+  // vetor inteiro, 1,00. Efeito prático: com OFE 50 (neutro) o OVR de todo mundo
+  // fica igual ao de antes; só quem tem ofensividade acima/abaixo da média se move.
+  // NOTA: com .2496 o OFE virou o MAIOR peso do Geral (acima de CRI e DEF, ambos
+  // .16). O dono está ciente de que isso dilui o peso relativo da defesa e optou
+  // por não antecipar ajuste — se incomodar, o conserto é subir DEF aqui.
+  Geral:       w(.102, .1088, .0816, .16, .068, .06, .034, .0612, .0748, .2496),
+  ATA:         w(.2176, .102, .1156, .00, .068, .00, .0204, .102, .0544, .32),
+  // NÃO existe mais um OVR 'Defesa'. Ele alimentava o chip DEF da listagem, que
+  // virou o ATRIBUTO de marcação PURO ("conte somente a DEF no chip") — e o
+  // balanceador nunca usou este vetor: o eixo defensivo do time é a
+  // `estabilidadeDefensiva` (geométrica, com os 2 melhores DEF, a recomposição
+  // e o goleiro). Ficou sem consumidor e foi removido em vez de virar peso
+  // morto que alguém ajustaria achando que muda algo. As calibragens que
+  // moravam aqui (VEL .13→.03 e FIS .15→.10, "ser rápido/forte não é defender")
+  // seguem vivas em `ROLES.MARC` e em `LINE_POSITIONS.FIXO`.
+  Construcao:  w(.03, .44, .17, .11, .03, .02, .03, .09, .08, 0),
+  Mobilidade:  w(.10, .07, .12, .04, .28, .03, .12, .19, .05, 0),
 };
 
 export const OVR_LABELS: Record<OvrKey, string> = {
-  Geral: 'Geral', Ataque: 'Ataque', Defesa: 'Defesa',
+  Geral: 'Geral', ATA: 'Ataque',
   Construcao: 'Construção', Mobilidade: 'Mobilidade',
 };

@@ -1,8 +1,8 @@
 // Modelo de domínio do Balanceador de Times.
 //
 // Modelo v3 (única fonte de verdade, escala ÚNICA 0–100): cada jogador tem uma
-// posição de origem (Defensor/Meia/Atacante) e 9 atributos 0–100 (FIN/CRI/DRI/
-// DEF/VEL/RCD/INT/MOV/FIS — ver src/domain/attributes.ts) que alimentam o
+// posição de origem (Defensor/Meia/Atacante) e 10 atributos 0–100 (FIN/CRI/DRI/
+// DEF/VEL/RCD/INT/MOV/FIS/OFE — ver src/domain/attributes.ts) que alimentam o
 // balanceador (funções, OVRs contextuais, formação inferida). Não existe mais
 // nenhuma escala de estrela (0–5): o Overall (0–100, ver `overallOf` em
 // src/engine/playerModel.ts) é o único número de nota exibido/comparado.

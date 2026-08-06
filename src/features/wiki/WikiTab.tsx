@@ -27,9 +27,12 @@ export function WikiTab() {
       <div style={{ padding: '20px' }}>
         <Section title="As 7 posições de linha">
           <p style={{ marginTop: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-            Todo jogador de linha (fora o goleiro) encaixa numa dessas 7 posições. O balanceador olha os 9 atributos
-            do jogador (Finalização, Criação, Drible, Defesa, Velocidade, Recomposição Defensiva, Intensidade,
-            Mobilidade, Físico) e calcula o quão bem ele encaixa em cada uma.
+            Todo jogador de linha (fora o goleiro) encaixa numa dessas 7 posições. O balanceador olha os atributos do
+            jogador (Finalização, Criação, Drible, Defesa, Velocidade, Recomposição Defensiva, Intensidade,
+            Mobilidade e Físico) e calcula o quão bem ele encaixa em cada uma. A <strong>Ofensividade</strong> é o
+            décimo atributo e, por enquanto, é a única que NÃO entra nesse encaixe de posição — ela pesa na nota
+            geral do jogador, no número de ataque dele (o ATA) e no ataque do TIME, mas não decide em que vaga ele
+            joga.
           </p>
           <div style={{ display: 'grid', gap: 10 }}>
             {ALL_LINE_POSITIONS.map((pos) => (
@@ -67,18 +70,18 @@ export function WikiTab() {
           </p>
         </Section>
 
-        <Section title="Os 6 números exibidos (OVR · OFE · RCD · INT · DEF · GOL)">
+        <Section title="Os 7 números exibidos (OVR · ATA · RCD · INT · OFE · DEF · GOL)">
           <p style={{ marginTop: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-            No cadastro e na listagem, cada jogador mostra 6 números lado a lado. OVR, OFE e DEF são OVRs (combinação
-            ponderada de vários atributos). Já RCD e INT são diferentes: são os atributos de Recomposição Defensiva e
-            Intensidade mostrados DIRETO, sem combinar com nada — por isso ficam lado a lado, os dois são "atributo
-            puro", não OVR.
+            No cadastro e na listagem, cada jogador mostra 7 números lado a lado. OVR, ATA e DEF são OVRs (combinação
+            ponderada de vários atributos). Já RCD, INT e OFE são diferentes: são os atributos de Recomposição
+            Defensiva, Intensidade e Ofensividade mostrados DIRETO, sem combinar com nada — por isso ficam lado a
+            lado, os três são "atributo puro", não OVR.
           </p>
           <p style={{ fontSize: '0.88rem', lineHeight: 1.5 }}>
-            <strong>Atenção com OFE e DEF:</strong> esses dois números são o perfil INDIVIDUAL do jogador. O
+            <strong>Atenção com ATA e DEF:</strong> esses dois números são o perfil INDIVIDUAL do jogador. O
             balanceador NÃO usa essas fórmulas para montar os times — ele avalia ataque e defesa no nível do TIME
             inteiro, com contas diferentes (melhores finalizadores/marcadores do time, não médias individuais). Então
-            o OFE/DEF do chip é uma leitura pessoal do jogador, não uma prévia do que o balanceador vai considerar na
+            o ATA/DEF do chip é uma leitura pessoal do jogador, não uma prévia do que o balanceador vai considerar na
             hora de montar os times. Já OVR, RCD e INT batem certinho com o que o balanceador usa (são médias simples
             do time).
           </p>
@@ -86,18 +89,20 @@ export function WikiTab() {
             <div>
               <strong>OVR — Geral</strong>
               <p style={{ margin: '2px 0 0', fontSize: '0.88rem', lineHeight: 1.5 }}>
-                A nota geral do jogador: uma média de todos os 9 atributos, sem pender pra nenhum lado. É o número
+                A nota geral do jogador: uma média ponderada dos atributos, sem pender pra nenhum lado. É o número
                 usado como referência principal e casa com o balanceador — o equilíbrio geral do time usa a média do
-                OVR Geral dos 6 de linha.
+                OVR Geral dos 6 de linha. A <strong>Ofensividade entra nesta conta</strong> e é hoje o maior peso
+                dela — um jogador com ofensividade altíssima sobe bastante o OVR. A marcação e a recomposição
+                mantiveram o peso que tinham; quem cedeu espaço pra ofensividade foram os outros atributos ofensivos.
               </p>
             </div>
             <div>
-              <strong>OFE — Ofensivo (perfil individual)</strong>
+              <strong>ATA — Ofensivo (perfil individual)</strong>
               <p style={{ margin: '2px 0 0', fontSize: '0.88rem', lineHeight: 1.5 }}>
-                Quanto ele pesa no ataque: finalização, criação de jogo, drible e mobilidade contam mais aqui. Um
-                jogador com OFE alto é o que mais ajuda a criar e converter chances de gol — mas é uma leitura dele
-                sozinho. O balanceador não soma OFE dos jogadores: ele olha os 2 melhores finalizadores e o maior
-                criador do TIME pra decidir o ataque.
+                Quanto ele pesa no ataque: finalização, criação de jogo, drible, mobilidade e ofensividade (ver OFE
+                abaixo) contam mais aqui. Um jogador com ATA alto é o que mais ajuda a criar e converter chances de
+                gol — mas é uma leitura dele sozinho. O balanceador não soma ATA dos jogadores: ele olha os 2 melhores
+                finalizadores, o maior criador e os 2 jogadores mais ofensivos do TIME pra decidir o ataque.
               </p>
             </div>
             <div>
@@ -105,7 +110,7 @@ export function WikiTab() {
               <p style={{ margin: '2px 0 0', fontSize: '0.88rem', lineHeight: 1.5 }}>
                 Este NÃO é um OVR combinado — é o atributo de Recomposição Defensiva puro, do jeito que foi
                 cadastrado (com lesão aplicada, se houver). Mostra o quanto o jogador efetivamente volta pra marcar, e
-                casa com o balanceador: entra direto na média de recuo do time. Um jogador com OFE alto e RCD baixo é
+                casa com o balanceador: entra direto na média de recuo do time. Um jogador com ATA alto e RCD baixo é
                 o clássico "ataca bem, mas some na marcação" — bom pra criar perigo, mas deixa buraco atrás quando o
                 time perde a bola.
               </p>
@@ -119,6 +124,18 @@ export function WikiTab() {
               </p>
             </div>
             <div>
+              <strong>OFE — Ofensividade</strong>
+              <p style={{ margin: '2px 0 0', fontSize: '0.88rem', lineHeight: 1.5 }}>
+                Também é atributo puro, não OVR — mostra a "esperteza" do jogador com bola no pé perto do ataque: saber
+                reconhecer o espaço, driblar quando dá pra driblar, chutar quando chutar é a melhor opção. Não é
+                velocidade, nem finalização isolada — é o julgamento de decidir a jogada certa na hora certa. Pesa
+                bastante no número ATA (quase um terço da conta) e também entra direto no cálculo do ataque do TIME: o
+                balanceador olha os 2 jogadores mais ofensivos do time, do mesmo jeito que olha os 2 melhores
+                finalizadores — quem joga mais atrás no time conta menos nessa conta, do jeito que já acontecia com
+                finalização e criação.
+              </p>
+            </div>
+            <div>
               <strong>DEF — Defensivo SEM recomposição (perfil individual)</strong>
               <p style={{ margin: '2px 0 0', fontSize: '0.88rem', lineHeight: 1.5 }}>
                 Quão sólido ele é na defesa em si: marcação, desarme, antecipação, posicionamento — <strong>tirando o
@@ -127,7 +144,7 @@ export function WikiTab() {
                 "o quanto ele marca (quando já está lá)", RCD responde "o quanto ele volta". Um jogador com todos os
                 atributos iguais continua com o mesmo DEF de antes — tirar da conta um atributo que vale exatamente a
                 média não muda a média. Quem se mexe é quem tem a recomposição descolada do próprio nível defensivo
-                (ex.: quem compensava marcação fraca com recomposição alta agora aparece mais baixo no DEF). Como OFE, é
+                (ex.: quem compensava marcação fraca com recomposição alta agora aparece mais baixo no DEF). Como ATA, é
                 uma leitura individual — o balanceador olha os 2 melhores marcadores do time (mais o goleiro escalado),
                 não a média de DEF de todo mundo.
               </p>
@@ -135,7 +152,7 @@ export function WikiTab() {
             <div>
               <strong>GOL — Goleiro</strong>
               <p style={{ margin: '2px 0 0', fontSize: '0.88rem', lineHeight: 1.5 }}>
-                A nota de goleiro, separada dos outros 5. Só existe pra quem está marcado como apto a jogar no gol —
+                A nota de goleiro, separada dos outros 6. Só existe pra quem está marcado como apto a jogar no gol —
                 para os demais jogadores esse número simplesmente não aparece (não é zero, é "não se aplica").
               </p>
             </div>

@@ -24,9 +24,9 @@ interface FunPlayerSeed {
 // existia na derivação legada a partir da estrela, mantida aqui só como
 // semente de sabor pro roster de brincadeira — não é fórmula de domínio).
 const POS_OFFSETS: Record<Position, AttrVector> = {
-  DEFENSOR: { FIN: -18, CRI: 2, DRI: -10, DEF: 12, VEL: 0, RCD: 6, INT: 6, MOV: -8, FIS: 8 },
-  MEIA: { FIN: -6, CRI: 8, DRI: 2, DEF: -2, VEL: 0, RCD: 6, INT: 6, MOV: 4, FIS: 0 },
-  ATACANTE: { FIN: 14, CRI: -6, DRI: 6, DEF: -16, VEL: 4, RCD: -6, INT: -6, MOV: 10, FIS: 2 },
+  DEFENSOR: { FIN: -18, CRI: 2, DRI: -10, DEF: 12, VEL: 0, RCD: 6, INT: 6, MOV: -8, FIS: 8, OFE: 0 },
+  MEIA: { FIN: -6, CRI: 8, DRI: 2, DEF: -2, VEL: 0, RCD: 6, INT: 6, MOV: 4, FIS: 0, OFE: 0 },
+  ATACANTE: { FIN: 14, CRI: -6, DRI: 6, DEF: -16, VEL: 4, RCD: -6, INT: -6, MOV: 10, FIS: 2, OFE: 0 },
 };
 
 const seedAttributes = (overall: number, position: Position, seed: FunPlayerSeed): AttrVector => {
@@ -34,6 +34,7 @@ const seedAttributes = (overall: number, position: Position, seed: FunPlayerSeed
   const a: AttrVector = {
     FIN: overall + off.FIN, CRI: overall + off.CRI, DRI: overall + off.DRI, DEF: overall + off.DEF,
     VEL: overall + off.VEL, RCD: overall + off.RCD, INT: overall + off.INT, MOV: overall + off.MOV, FIS: overall + off.FIS,
+    OFE: overall + off.OFE,
   };
   if (seed.veloz) a.VEL += 15;
   if (seed.boaSaidaDeBola) a.CRI += 12;

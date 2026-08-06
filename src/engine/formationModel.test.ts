@@ -8,7 +8,7 @@ import {
 } from './formationModel';
 
 const A = (o: Partial<AttrVector>): AttrVector =>
-  ({ FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50, ...o });
+  ({ FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50, OFE: 50, ...o });
 
 let idc = 0;
 const bx = (attrs: AttrVector): Player => ({

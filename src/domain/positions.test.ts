@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { LINE_POSITIONS, ALL_LINE_POSITIONS, linePositionFit, ATTACKING_POSITIONS, isAttackingPosition } from './positions';
-import type { AttrVector } from './attributes';
+import { ALL_ATTRIBUTE_KEYS, type AttrVector } from './attributes';
 
-const sumWeights = (w: AttrVector): number => w.FIN + w.CRI + w.DRI + w.DEF + w.VEL + w.RCD + w.INT + w.MOV + w.FIS;
+// Soma TODAS as chaves via `ALL_ATTRIBUTE_KEYS`, nunca uma lista escrita à mão:
+// a versão anterior omitia OFE e continuaria passando mesmo se alguém desse peso
+// a ele numa posição — o vetor somaria mais de 1,00 sem o teste perceber.
+const sumWeights = (w: AttrVector): number =>
+  ALL_ATTRIBUTE_KEYS.reduce((s, k) => s + w[k], 0);
 
 describe('catálogo de posições de linha (7 posições)', () => {
   it('tem exatamente 7 posições', () => {
@@ -28,14 +32,14 @@ describe('catálogo de posições de linha (7 posições)', () => {
   });
 
   it('contraste ALA vs VOLANTE: DRI alto/CRI baixo encaixa melhor em ALA', () => {
-    const driblador: AttrVector = { FIN: 50, CRI: 20, DRI: 85, DEF: 30, VEL: 70, RCD: 40, INT: 40, MOV: 60, FIS: 40 };
+    const driblador: AttrVector = { FIN: 50, CRI: 20, DRI: 85, DEF: 30, VEL: 70, RCD: 40, INT: 40, MOV: 60, FIS: 40, OFE: 50 };
     const fitAla = linePositionFit(driblador, 'ALA');
     const fitVolante = linePositionFit(driblador, 'VOLANTE');
     expect(fitAla).toBeGreaterThan(fitVolante);
   });
 
   it('contraste ALA vs VOLANTE: CRI alto/DRI baixo encaixa melhor em VOLANTE', () => {
-    const passador: AttrVector = { FIN: 30, CRI: 85, DRI: 20, DEF: 60, VEL: 30, RCD: 60, INT: 60, MOV: 30, FIS: 50 };
+    const passador: AttrVector = { FIN: 30, CRI: 85, DRI: 20, DEF: 60, VEL: 30, RCD: 60, INT: 60, MOV: 30, FIS: 50, OFE: 50 };
     const fitAla = linePositionFit(passador, 'ALA');
     const fitVolante = linePositionFit(passador, 'VOLANTE');
     expect(fitVolante).toBeGreaterThan(fitAla);
@@ -63,7 +67,7 @@ describe('catálogo de posições de linha (7 posições)', () => {
   });
 
   it('INT move o fit de forma perceptível nas posições de pressão', () => {
-    const base: AttrVector = { FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 20, MOV: 50, FIS: 50 };
+    const base: AttrVector = { FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 20, MOV: 50, FIS: 50, OFE: 50 };
     const pressiona: AttrVector = { ...base, INT: 90 };
     // 70 pontos de INT com peso >= .10 têm de valer >= 7 pontos de fit.
     expect(linePositionFit(pressiona, 'ALA') - linePositionFit(base, 'ALA')).toBeGreaterThanOrEqual(7);
@@ -73,7 +77,7 @@ describe('catálogo de posições de linha (7 posições)', () => {
   // RCD e INT são perfis OPOSTOS e precisam continuar distinguíveis: o cara que
   // pressiona bem à frente mas é frouxo voltando não pode encaixar como lateral.
   it('RCD e INT separam o pressionador do jogador que recompõe', () => {
-    const pressionaNaoVolta: AttrVector = { FIN: 50, CRI: 50, DRI: 50, DEF: 40, VEL: 50, RCD: 15, INT: 90, MOV: 50, FIS: 50 };
+    const pressionaNaoVolta: AttrVector = { FIN: 50, CRI: 50, DRI: 50, DEF: 40, VEL: 50, RCD: 15, INT: 90, MOV: 50, FIS: 50, OFE: 50 };
     const volta: AttrVector = { ...pressionaNaoVolta, RCD: 90, INT: 15 };
     expect(linePositionFit(volta, 'LATERAL')).toBeGreaterThan(linePositionFit(pressionaNaoVolta, 'LATERAL'));
     expect(linePositionFit(pressionaNaoVolta, 'ALA')).toBeGreaterThan(linePositionFit(volta, 'ALA'));
@@ -83,8 +87,8 @@ describe('catálogo de posições de linha (7 posições)', () => {
   // é multiplicador da marcação, não substituto. Um jogador forte que não marca
   // não pode ganhar a vaga de último homem de quem marca bem.
   it('físico alto NÃO compensa marcação baixa no FIXO', () => {
-    const forteQueNaoMarca: AttrVector = { FIN: 80, CRI: 50, DRI: 50, DEF: 20, VEL: 50, RCD: 35, INT: 50, MOV: 50, FIS: 95 };
-    const marcadorMedioFisico: AttrVector = { FIN: 30, CRI: 50, DRI: 50, DEF: 85, VEL: 50, RCD: 75, INT: 50, MOV: 50, FIS: 50 };
+    const forteQueNaoMarca: AttrVector = { FIN: 80, CRI: 50, DRI: 50, DEF: 20, VEL: 50, RCD: 35, INT: 50, MOV: 50, FIS: 95, OFE: 50 };
+    const marcadorMedioFisico: AttrVector = { FIN: 30, CRI: 50, DRI: 50, DEF: 85, VEL: 50, RCD: 75, INT: 50, MOV: 50, FIS: 50, OFE: 50 };
     expect(linePositionFit(marcadorMedioFisico, 'FIXO')).toBeGreaterThan(linePositionFit(forteQueNaoMarca, 'FIXO'));
     // ...e o forte finalizador segue sendo melhor PIVO do que fixo.
     expect(linePositionFit(forteQueNaoMarca, 'PIVO')).toBeGreaterThan(linePositionFit(forteQueNaoMarca, 'FIXO'));

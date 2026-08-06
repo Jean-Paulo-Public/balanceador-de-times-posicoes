@@ -3,7 +3,7 @@
 // React: só dados, pra poder testar isoladamente (ver powerRanking.test.ts).
 //
 // VALORES USADOS: os MESMOS que a listagem de jogadores (PlayerCard) exibe —
-// `effectiveAttributesBase(player)` pros 9 atributos de linha (base já com
+// `effectiveAttributesBase(player)` pros 10 atributos de linha (base já com
 // desconto de lesão, sem contexto de posição — é o que os chips OVR/RCD/INT
 // mostram) e `effectiveGk(player)` pra nota de goleiro (idem, com lesão já
 // aplicada). Isso garante que o power ranking NUNCA contradiga o número que o
@@ -76,7 +76,7 @@ const sortPlayers = (a: { name: string; value: number }, b: { name: string; valu
 
 /**
  * Agrupa uma lista de { name, value } nas faixas dos presets, omitindo faixas
- * vazias. Função genérica reaproveitada tanto pros 9 atributos quanto pra nota
+ * vazias. Função genérica reaproveitada tanto pros 10 atributos quanto pra nota
  * de goleiro.
  */
 const groupIntoBands = (entries: { name: string; value: number }[]): PowerRankingBand[] => {

@@ -21,12 +21,12 @@ export interface TestTraits {
   lowRecovery?: boolean;
 }
 
-/** Vetor UNIFORME (0–100): todos os 9 atributos no mesmo valor — o jeito mais
+/** Vetor UNIFORME (0–100): todos os 10 atributos no mesmo valor — o jeito mais
  * direto de fixture pra um "overall" alvo, já que os pesos de cada OVR somam
  * 1,00 (ver OVR_WEIGHTS em domain/attributes.ts). */
 const flatAttrs = (overall: number): AttrVector => {
   const v = clampAttr(overall);
-  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v };
+  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v, OFE: v };
 };
 
 const applyTraits = (attrs: AttrVector, overall: number, traits: TestTraits | undefined): AttrVector => {
@@ -40,7 +40,7 @@ const applyTraits = (attrs: AttrVector, overall: number, traits: TestTraits | un
     const v = clampAttr(overall);
     out = {
       FIN: clampAttr(60 + v * 0.5), CRI: 55, DRI: 50, DEF: 20, VEL: 40,
-      RCD: 40, INT: 40, MOV: 20, FIS: clampAttr(50 + v * 0.4),
+      RCD: 40, INT: 40, MOV: 20, FIS: clampAttr(50 + v * 0.4), OFE: attrs.OFE,
     };
   }
   if (traits.fast) out = { ...out, VEL: 90 };
@@ -50,7 +50,7 @@ const applyTraits = (attrs: AttrVector, overall: number, traits: TestTraits | un
 };
 
 /**
- * Fixture de jogador: monta os 9 atributos DIRETO na escala 0–100 (vetor
+ * Fixture de jogador: monta os 10 atributos DIRETO na escala 0–100 (vetor
  * uniforme no valor de `overall`, salvo traços que sobrescrevem alguns
  * atributos — ver `TestTraits`). Sem estrela, sem derivação: overall 0–100 é
  * a única escala.
@@ -177,7 +177,8 @@ const ap = (entries: [PositionPreferenceEntry['position'], boolean][]): Position
 const attrs = (
   FIN: number, CRI: number, DRI: number, DEF: number,
   VEL: number, RCD: number, INT: number, MOV: number, FIS: number,
-): AttrVector => ({ FIN, CRI, DRI, DEF, VEL, RCD, INT, MOV, FIS });
+  OFE: number = 50,
+): AttrVector => ({ FIN, CRI, DRI, DEF, VEL, RCD, INT, MOV, FIS, OFE });
 
 /**
  * Os 12 jogadores ativos do elenco real, tal como exportados pelo app em

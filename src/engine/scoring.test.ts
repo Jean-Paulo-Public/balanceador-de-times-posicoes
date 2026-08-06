@@ -10,8 +10,8 @@ import {
 const sum = (o: AttrVector): number => Object.values(o).reduce((a, b) => a + b, 0);
 
 // perfis de exemplo
-const finalizador: AttrVector = { FIN: 100, CRI: 40, DRI: 80, DEF: 30, VEL: 80, RCD: 40, INT: 40, MOV: 90, FIS: 50 };
-const forteLento: AttrVector = { FIN: 20, CRI: 45, DRI: 35, DEF: 80, VEL: 35, RCD: 75, INT: 75, MOV: 35, FIS: 85 }; // perfil "Jean"
+const finalizador: AttrVector = { FIN: 100, CRI: 40, DRI: 80, DEF: 30, VEL: 80, RCD: 40, INT: 40, MOV: 90, FIS: 50, OFE: 50 };
+const forteLento: AttrVector = { FIN: 20, CRI: 45, DRI: 35, DEF: 80, VEL: 35, RCD: 75, INT: 75, MOV: 35, FIS: 85, OFE: 50 }; // perfil "Jean"
 
 describe('pesos somam 1,00', () => {
   it('todas as funções', () => {
@@ -26,8 +26,8 @@ describe('fit e OVR ficam na escala 0–100', () => {
   it('fit e ovr limitados', () => {
     expect(roleFit(finalizador, 'SA')).toBeGreaterThan(0);
     expect(roleFit(finalizador, 'SA')).toBeLessThanOrEqual(100);
-    expect(ovr(forteLento, 'Defesa')).toBeGreaterThan(0);
-    expect(ovr(forteLento, 'Defesa')).toBeLessThanOrEqual(100);
+    expect(ovr(forteLento, 'Geral')).toBeGreaterThan(0);
+    expect(ovr(forteLento, 'Geral')).toBeLessThanOrEqual(100);
   });
 });
 
@@ -88,19 +88,52 @@ describe('goleiro efetivo no rodízio (média por cenário, peso 1/k)', () => {
 
 describe('complementaridade (sinergia)', () => {
   const semCriador: AttrVector[] = [
-    { FIN: 90, CRI: 20, DRI: 70, DEF: 30, VEL: 70, RCD: 40, INT: 40, MOV: 80, FIS: 40 },
-    { FIN: 88, CRI: 25, DRI: 60, DEF: 30, VEL: 75, RCD: 40, INT: 40, MOV: 80, FIS: 40 },
+    { FIN: 90, CRI: 20, DRI: 70, DEF: 30, VEL: 70, RCD: 40, INT: 40, MOV: 80, FIS: 40, OFE: 50 },
+    { FIN: 88, CRI: 25, DRI: 60, DEF: 30, VEL: 75, RCD: 40, INT: 40, MOV: 80, FIS: 40, OFE: 50 },
   ];
   const comCriador: AttrVector[] = [
-    { FIN: 90, CRI: 20, DRI: 70, DEF: 30, VEL: 70, RCD: 40, INT: 40, MOV: 80, FIS: 40 },
-    { FIN: 50, CRI: 92, DRI: 70, DEF: 40, VEL: 60, RCD: 60, INT: 60, MOV: 70, FIS: 45 },
+    { FIN: 90, CRI: 20, DRI: 70, DEF: 30, VEL: 70, RCD: 40, INT: 40, MOV: 80, FIS: 40, OFE: 50 },
+    { FIN: 50, CRI: 92, DRI: 70, DEF: 40, VEL: 60, RCD: 60, INT: 60, MOV: 70, FIS: 45, OFE: 50 },
   ];
   it('ataque rende mais com um criador do que só com finalizadores', () => {
     expect(potencialAtaque(comCriador)).toBeGreaterThan(potencialAtaque(semCriador));
   });
   it('defesa exige marcação E recomposição', () => {
-    const soMarca: AttrVector[] = [{ FIN: 20, CRI: 40, DRI: 30, DEF: 90, VEL: 40, RCD: 10, INT: 10, MOV: 30, FIS: 80 }];
-    const equilibrado: AttrVector[] = [{ FIN: 20, CRI: 40, DRI: 30, DEF: 75, VEL: 50, RCD: 75, INT: 75, MOV: 40, FIS: 70 }];
+    const soMarca: AttrVector[] = [{ FIN: 20, CRI: 40, DRI: 30, DEF: 90, VEL: 40, RCD: 10, INT: 10, MOV: 30, FIS: 80, OFE: 50 }];
+    const equilibrado: AttrVector[] = [{ FIN: 20, CRI: 40, DRI: 30, DEF: 75, VEL: 50, RCD: 75, INT: 75, MOV: 40, FIS: 70, OFE: 50 }];
     expect(estabilidadeDefensiva(equilibrado)).toBeGreaterThan(estabilidadeDefensiva(soMarca));
+  });
+
+  it('time com FIN/CRI/OFE todos 100 dá potencial de ataque 100 (expoentes somam 1,00)', () => {
+    const perfeito: AttrVector[] = [
+      { FIN: 100, CRI: 100, DRI: 0, DEF: 0, VEL: 0, RCD: 0, INT: 0, MOV: 0, FIS: 0, OFE: 100 },
+      { FIN: 100, CRI: 100, DRI: 0, DEF: 0, VEL: 0, RCD: 0, INT: 0, MOV: 0, FIS: 0, OFE: 100 },
+    ];
+    expect(potencialAtaque(perfeito)).toBeCloseTo(100, 9);
+  });
+
+  it('ofensividade move o eixo ofensivo: dois times iguais exceto no OFE têm potencial diferente', () => {
+    const base: AttrVector[] = [
+      { FIN: 80, CRI: 70, DRI: 60, DEF: 30, VEL: 60, RCD: 40, INT: 40, MOV: 60, FIS: 50, OFE: 30 },
+      { FIN: 75, CRI: 65, DRI: 55, DEF: 30, VEL: 60, RCD: 40, INT: 40, MOV: 60, FIS: 50, OFE: 30 },
+    ];
+    const maisOfensivo: AttrVector[] = base.map((a) => ({ ...a, OFE: 90 }));
+    expect(potencialAtaque(maisOfensivo)).toBeGreaterThan(potencialAtaque(base));
+  });
+
+  it('OFE zerado em todo mundo zera o eixo ofensivo, mesmo com FIN/CRI altos', () => {
+    const semOfensividade: AttrVector[] = [
+      { FIN: 90, CRI: 90, DRI: 60, DEF: 30, VEL: 60, RCD: 40, INT: 40, MOV: 60, FIS: 50, OFE: 0 },
+      { FIN: 85, CRI: 80, DRI: 55, DEF: 30, VEL: 60, RCD: 40, INT: 40, MOV: 60, FIS: 50, OFE: 0 },
+    ];
+    expect(potencialAtaque(semOfensividade)).toBe(0);
+  });
+
+  it('OFE não afeta a estabilidade defensiva (eixo defensivo intocado)', () => {
+    const time: AttrVector[] = [
+      { FIN: 20, CRI: 40, DRI: 30, DEF: 75, VEL: 50, RCD: 75, INT: 75, MOV: 40, FIS: 70, OFE: 10 },
+    ];
+    const mesmoTimeOfeAlto: AttrVector[] = time.map((a) => ({ ...a, OFE: 95 }));
+    expect(estabilidadeDefensiva(mesmoTimeOfeAlto)).toBe(estabilidadeDefensiva(time));
   });
 });

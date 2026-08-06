@@ -1,6 +1,9 @@
 // Catálogo das 7 posições de linha do modelo v3 (Fut7: 1 goleiro + 6 de linha).
-// Cada posição tem pesos sobre os 9 atributos existentes (FIN/CRI/DRI/DEF/VEL/
-// RCD/INT/MOV/FIS), somando 1,00 — mesmo padrão de ROLES em src/domain/attributes.ts.
+// Cada posição tem pesos sobre os 10 atributos existentes (FIN/CRI/DRI/DEF/VEL/
+// RCD/INT/MOV/FIS/OFE), somando 1,00 — mesmo padrão de ROLES em src/domain/attributes.ts.
+// Hoje OFE pesa 0 em todas as posições (ver `w(...)` abaixo) — não é ausência
+// por esquecimento, é decisão explícita: o atributo é escrito por extenso em
+// cada linha pra nunca virar um default silencioso de novo.
 //
 // Eixo mais importante do modelo: ALA vs VOLANTE. Mesma faixa do campo, CRI e
 // DRI trocados de lugar. ALA constrói DRIBLANDO (DRI alto, CRI baixo — não é
@@ -9,7 +12,7 @@
 // "Posições de ataque" (usadas na regra da fila do goleiro, Fase 6): PIVO,
 // SEGUNDO_ATACANTE, MEIA_ATACANTE — o goleiro do Jogo 1 não pode ser um deles.
 
-import type { AttrVector } from './attributes';
+import { ALL_ATTRIBUTE_KEYS, type AttrVector } from './attributes';
 
 export type LinePosition =
   | 'PIVO'
@@ -76,7 +79,8 @@ export const isAttackingPosition = (pos: LinePosition): boolean =>
 const w = (
   FIN: number, CRI: number, DRI: number, DEF: number,
   VEL: number, RCD: number, INT: number, MOV: number, FIS: number,
-): AttrVector => ({ FIN, CRI, DRI, DEF, VEL, RCD, INT, MOV, FIS });
+  OFE: number,
+): AttrVector => ({ FIN, CRI, DRI, DEF, VEL, RCD, INT, MOV, FIS, OFE });
 
 export interface LinePositionMeta {
   key: LinePosition;
@@ -97,33 +101,33 @@ export const LINE_POSITIONS: Record<LinePosition, LinePositionMeta> = {
   PIVO: {
     key: 'PIVO', label: 'Pivô',
     help: 'Referência de área, joga de costas pro gol. Domina finalização e é forte na proteção de bola/dividida.',
-    weights: w(.32, .08, .08, .03, .05, .02, .03, .14, .25),
+    weights: w(.32, .08, .08, .03, .05, .02, .03, .14, .25, 0),
   },
   SEGUNDO_ATACANTE: {
     key: 'SEGUNDO_ATACANTE', label: 'Segundo Atacante',
     help: 'Vive de movimentação e finalização — ataca o espaço nas costas da defesa.',
-    weights: w(.28, .08, .12, .02, .16, .01, .14, .15, .04),
+    weights: w(.28, .08, .12, .02, .16, .01, .14, .15, .04, 0),
   },
   MEIA_ATACANTE: {
     key: 'MEIA_ATACANTE', label: 'Meia-Atacante',
     help: 'Recua na defesa e entra na boca da área no ataque — criação, movimentação e finalização.',
-    weights: w(.20, .24, .10, .04, .07, .10, .12, .09, .04),
+    weights: w(.20, .24, .10, .04, .07, .10, .12, .09, .04, 0),
   },
   ALA: {
     key: 'ALA', label: 'Ala',
     help: 'Constrói DRIBLANDO e cruzando no terço final. Não é passador — vive do drible, velocidade e movimentação.',
-    weights: w(.08, .04, .30, .04, .20, .02, .14, .14, .04),
+    weights: w(.08, .04, .30, .04, .20, .02, .14, .14, .04, 0),
   },
   VOLANTE: {
     key: 'VOLANTE', label: 'Volante',
     help: 'O cara da saída de bola — meio-campista defensivo que constrói por PASSE, marca e recompõe.',
-    weights: w(.03, .32, .06, .22, .02, .12, .14, .05, .04),
+    weights: w(.03, .32, .06, .22, .02, .12, .14, .05, .04, 0),
   },
   LATERAL: {
     key: 'LATERAL', label: 'Lateral',
     help: 'Quase um fixo, mas sobe pra atacar na fase final — a velocidade paga a subida.',
     // Mesmo ajuste do FIXO, em escala menor: FIS .14 → .10, DEF .28 → .32.
-    weights: w(.02, .06, .06, .32, .18, .16, .06, .04, .10),
+    weights: w(.02, .06, .06, .32, .18, .16, .06, .04, .10, 0),
   },
   FIXO: {
     key: 'FIXO', label: 'Fixo',
@@ -134,15 +138,20 @@ export const LINE_POSITIONS: Record<LinePosition, LinePositionMeta> = {
     // "pivô virando fixo só porque é forte". Físico é MULTIPLICADOR de marcação,
     // não substituto: só rende pra quem sabe usá-lo defendendo. Não foi zerado
     // porque zagueiro fraco na dividida/bola aérea é problema real no Fut7.
-    weights: w(.00, .05, .02, .50, .06, .16, .03, .03, .15),
+    weights: w(.00, .05, .02, .50, .06, .16, .03, .03, .15, 0),
   },
 };
 
-/** Fit (0–100) de um jogador (vetor de atributos) numa posição de linha. */
+/**
+ * Fit (0–100) de um jogador (vetor de atributos) numa posição de linha.
+ * Percorre `ALL_ATTRIBUTE_KEYS` (fonte única de atributos) em vez de uma lista
+ * hardcoded — qualquer atributo novo (ex.: OFE) entra automaticamente no
+ * cálculo se ganhar peso > 0 em algum `LINE_POSITIONS`, sem precisar tocar
+ * aqui. Hoje OFE pesa 0 em todas as posições, então isso não muda o resultado.
+ */
 export const linePositionFit = (attrs: AttrVector, pos: LinePosition): number => {
   const weights = LINE_POSITIONS[pos].weights;
   let s = 0;
-  const keys: (keyof AttrVector)[] = ['FIN', 'CRI', 'DRI', 'DEF', 'VEL', 'RCD', 'INT', 'MOV', 'FIS'];
-  for (const k of keys) s += attrs[k] * weights[k];
+  for (const k of ALL_ATTRIBUTE_KEYS) s += attrs[k] * weights[k];
   return s;
 };

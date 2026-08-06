@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { normalizePlayer, normalizePlayers, parseAttrVector, parseAcceptedPositions, parsePositionOrderIndifferent, parseVeteran } from './migration';
 import { emptyAttrs } from '../domain/attributes';
 
-const VALID_ATTRS = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 48, MOV: 45, FIS: 58 };
+const VALID_ATTRS = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 48, MOV: 45, FIS: 58, OFE: 50 };
 /**
  * `acceptedPositions` é OBRIGATÓRIO: sem lista válida o registro é descartado
  * (não existe mais default de coringa). Todo jogador-exemplo válido precisa dela.
@@ -28,7 +28,7 @@ describe('normalizePlayer — shape atual (v9, escala ÚNICA 0–100, sem estrel
   });
 
   it('jogador v2 (com attributes válidos) preserva os atributos intactos, sem re-derivar', () => {
-    const attrs = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 48, MOV: 45, FIS: 58 };
+    const attrs = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 48, MOV: 45, FIS: 58, OFE: 50 };
     const p = normalizePlayer({
       id: 'y', name: 'Ciclano', position: 'MEIA', isGoalkeeper: true,
       attributes: attrs, gk: 77, acceptedPositions: VALID_POS,
@@ -38,7 +38,7 @@ describe('normalizePlayer — shape atual (v9, escala ÚNICA 0–100, sem estrel
   });
 
   it('não-goleiro com gk explicitamente null preserva o null', () => {
-    const attrs = { FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50 };
+    const attrs = { FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50, OFE: 50 };
     const p = normalizePlayer({ name: 'Sem Gol', attributes: attrs, gk: null, isGoalkeeper: false, acceptedPositions: VALID_POS });
     expect(p!.gk).toBeNull();
   });
@@ -71,8 +71,8 @@ describe('normalizePlayer — DESCARTE (não conserto) de registro malformado', 
     expect(normalizePlayer({ id: 'x', name: 'Sem Atributos', gk: null })).toBeNull();
   });
 
-  it('`attributes` parcial (falta 1 das 9 chaves) descarta o registro inteiro', () => {
-    const partial = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45 }; // falta FIS
+  it('`attributes` parcial (falta 1 das 10 chaves) descarta o registro inteiro', () => {
+    const partial = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, OFE: 50 }; // falta FIS
     expect(normalizePlayer({ name: 'Parcial', attributes: partial, gk: null })).toBeNull();
   });
 
@@ -94,8 +94,8 @@ describe('normalizePlayer — DESCARTE (não conserto) de registro malformado', 
     expect(normalizePlayer({ name: 'ComGkNull', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS })).not.toBeNull();
   });
 
-  it('clampeia valores de attributes fora de 0–100 quando o vetor é válido (9 chaves)', () => {
-    const attrs = { FIN: 500, CRI: -30, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58 };
+  it('clampeia valores de attributes fora de 0–100 quando o vetor é válido (10 chaves)', () => {
+    const attrs = { FIN: 500, CRI: -30, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58, OFE: 50 };
     const p = normalizePlayer({ name: 'Clamp', attributes: attrs, gk: null, acceptedPositions: VALID_POS });
     expect(p!.attributes.FIN).toBe(100);
     expect(p!.attributes.CRI).toBe(0);

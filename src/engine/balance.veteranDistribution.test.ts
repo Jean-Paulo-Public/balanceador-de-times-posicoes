@@ -27,7 +27,7 @@ afterEach(() => { Math.random = realRandom; });
 
 const flatAttrs = (overall: number): AttrVector => {
   const v = clampAttr(overall);
-  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v };
+  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v, OFE: v };
 };
 
 let idc = 0;

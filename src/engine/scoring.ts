@@ -95,10 +95,31 @@ const mean = (vals: number[]): number =>
   vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
 
 /**
- * Potencial de ataque ≈ (finalização_efetiva)^α · (criação_efetiva)^(1-α), α=0,5.
- * Se ninguém cria, tende a 0 mesmo com grandes finalizadores ("não recebe bola").
+ * Pesos (expoentes) dos 3 fatores do potencial de ataque. Média geométrica de
+ * 3 termos exige que os expoentes somem 1,00 — senão a escala 0–100 quebra
+ * (∛(100×100×100) = 100, mas √(100×100×100) ≈ 1000 se um expoente sobrar).
+ * Hoje os 3 pesam igual (1/3 cada); nomeados em constantes pra poder calibrar
+ * sem tocar na fórmula.
  */
-export const potencialAtaque = (outfield: AttrVector[], alpha = 0.5, zoneFactors?: readonly number[]): number => {
+export const OFF_FIN_WEIGHT = 1 / 3;
+export const OFF_CRI_WEIGHT = 1 / 3;
+export const OFF_OFE_WEIGHT = 1 / 3;
+
+/**
+ * Potencial de ataque ≈ (finalização_efetiva)^wFin · (criação_efetiva)^wCri ·
+ * (ofensividade_efetiva)^wOfe, com wFin+wCri+wOfe = 1,00 (hoje 1/3 cada).
+ *
+ * Se ninguém cria (ou ninguém tem finalização, ou ninguém tem ofensividade),
+ * o produto zera mesmo com grandes finalizadores — é assim de propósito
+ * ("não recebe bola" / "não tem quem ofereça perigo"), mas agora um time sem
+ * NENHUM jogador ofensivo também zera o eixo inteiro. Não há piso artificial.
+ *
+ * A ofensividade usa a MÉDIA DOS 2 MELHORES OFE (igual à finalização), não o
+ * máximo: ofensividade é algo que vários atacantes somam ao time (múltiplas
+ * ameaças), diferente da criação, que usa o MÁXIMO porque um único armador já
+ * basta pra municiar o ataque inteiro.
+ */
+export const potencialAtaque = (outfield: AttrVector[], zoneFactors?: readonly number[]): number => {
   if (outfield.length === 0) return 0;
   const f = (i: number) => zoneFactors?.[i] ?? 1;
   // O fator da ZONA escala os atributos ANTES das agregações (top-2 / máximo).
@@ -107,7 +128,12 @@ export const potencialAtaque = (outfield: AttrVector[], alpha = 0.5, zoneFactors
   // continuaria sendo dele independente da vaga que ocupa.
   const finEf = mean(topN(outfield.map((a, i) => a.FIN * f(i)), 2));
   const criEf = Math.max(...outfield.map((a, i) => a.CRI * f(i)));
-  return Math.pow(finEf, alpha) * Math.pow(criEf, 1 - alpha);
+  const ofeEf = mean(topN(outfield.map((a, i) => a.OFE * f(i)), 2));
+  return (
+    Math.pow(finEf, OFF_FIN_WEIGHT) *
+    Math.pow(criEf, OFF_CRI_WEIGHT) *
+    Math.pow(ofeEf, OFF_OFE_WEIGHT)
+  );
 };
 
 /**

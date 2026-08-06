@@ -9,7 +9,7 @@ import { buildTeamSchedule, applyGame1GoalkeeperRule, gamesForTeamCount, clampLa
 /** Vetor UNIFORME (0–100): fixture direta de atributos, sem estrela nem derivação. */
 const flatAttrs = (overall: number): AttrVector => {
   const v = clampAttr(overall);
-  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v };
+  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v, OFE: v };
 };
 
 let idc = 0;

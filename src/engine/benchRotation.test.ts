@@ -8,7 +8,7 @@ import { chooseBenchGroup, BENCH_EXCEPTION_COOLDOWN_ROUNDS } from './benchRotati
 /** Vetor UNIFORME (0–100): fixture direta de atributos, sem estrela nem derivação. */
 const flatAttrs = (overall: number): AttrVector => {
   const v = clampAttr(overall);
-  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v };
+  return { FIN: v, CRI: v, DRI: v, DEF: v, VEL: v, RCD: v, INT: v, MOV: v, FIS: v, OFE: v };
 };
 
 let idc = 0;
@@ -283,7 +283,7 @@ describe('chooseBenchGroup — regra (b) contagem acumulada equilibrada', () => 
 });
 
 describe('chooseBenchGroup — regra (c) desempate por menor impacto', () => {
-  const flatAttrs = { FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50 };
+  const flatAttrs = { FIN: 50, CRI: 50, DRI: 50, DEF: 50, VEL: 50, RCD: 50, INT: 50, MOV: 50, FIS: 50, OFE: 50 };
 
   it('entre 2 empatados em (b), prefere bancar o intercambiável — não o especialista difícil de repor', () => {
     // fixoForte (perfil DEF/FIS puxado, especialista) e generico (perfil neutro,
@@ -292,7 +292,7 @@ describe('chooseBenchGroup — regra (c) desempate por menor impacto', () => {
     // O time SEM o especialista perde muito mais fit do que o time sem o
     // genérico (que tem substitutos igualmente bons na própria linha).
     const fixoForte = P('FixoForte', 'DEFENSOR', 100, {
-      attributes: { FIN: 0, CRI: 5, DRI: 5, DEF: 95, VEL: 10, RCD: 90, INT: 10, MOV: 10, FIS: 95 },
+      attributes: { FIN: 0, CRI: 5, DRI: 5, DEF: 95, VEL: 10, RCD: 90, INT: 10, MOV: 10, FIS: 95, OFE: 50 },
     });
     const generico = P('Generico', 'MEIA', 60, { attributes: flatAttrs });
     // 5 outros de linha (não 4): com banco de 1, o campo tem 6 vagas — roster

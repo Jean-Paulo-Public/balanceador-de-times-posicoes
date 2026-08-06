@@ -3,7 +3,7 @@ import { parseImportedPlayers } from './importExport';
 import type { Player } from '../../domain/types';
 import { emptyAttrs } from '../../domain/attributes';
 
-const VALID_ATTRS = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58 };
+const VALID_ATTRS = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58, OFE: 50 };
 
 const basePlayer = (overrides: Partial<Player> = {}): Player => ({
   id: 'abc-123',
@@ -19,7 +19,7 @@ const basePlayer = (overrides: Partial<Player> = {}): Player => ({
 
 describe('parseImportedPlayers — round-trip', () => {
   it('preserva attributes/gk/handicapPct ao exportar e reimportar (array puro)', () => {
-    const attrs = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58 };
+    const attrs = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58, OFE: 50 };
     const player = basePlayer({ attributes: attrs, gk: 42, handicapPct: 20 });
     const json = JSON.stringify([player]);
     const [imported] = parseImportedPlayers(json);
@@ -38,8 +38,8 @@ describe('parseImportedPlayers — round-trip', () => {
     expect(imported.attributes).toEqual(attrs);
   });
 
-  it('clampeia valores de attributes fora de 0–100 quando o vetor é válido (9 chaves)', () => {
-    const attrs = { FIN: 500, CRI: -30, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58 };
+  it('clampeia valores de attributes fora de 0–100 quando o vetor é válido (10 chaves)', () => {
+    const attrs = { FIN: 500, CRI: -30, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 44, MOV: 45, FIS: 58, OFE: 50 };
     const json = JSON.stringify([basePlayer({ attributes: attrs })]);
     const [imported] = parseImportedPlayers(json);
     expect(imported.attributes.FIN).toBe(100);
