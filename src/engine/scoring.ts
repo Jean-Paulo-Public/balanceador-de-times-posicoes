@@ -111,12 +111,21 @@ export const potencialAtaque = (outfield: AttrVector[], alpha = 0.5, zoneFactors
 };
 
 /**
- * Estabilidade defensiva ≈ (defesa_efetiva)^β · (recomposição_efetiva)^(1-β), β=0,6.
+ * Estabilidade defensiva ≈ (defesa_efetiva)^β · (recomposição_efetiva)^(1-β), β=0,5.
  * Marcar sem recompor (ou o contrário) dá defesa frágil. Usa RCD (recuo
  * defensivo puro), não INT — esta métrica é sobre solidez de marcação, não
  * sobre pressão à frente.
+ *
+ * β caiu de 0,6 para 0,5 (decisão do dono): "se o cara não volta pra recompor
+ * ele atrapalha muito defensivamente, muito mesmo". Agora marcação e
+ * recomposição pesam IGUAL neste eixo. Como é PRODUTO e não soma, recomposição
+ * baixa já derrubava o eixo inteiro; o que mudou é o quanto ela derruba.
  */
-export const estabilidadeDefensiva = (outfield: AttrVector[], beta = 0.6, zoneFactors?: readonly number[]): number => {
+export const DEF_STABILITY_BETA = 0.5;
+
+export const estabilidadeDefensiva = (
+  outfield: AttrVector[], beta = DEF_STABILITY_BETA, zoneFactors?: readonly number[],
+): number => {
   if (outfield.length === 0) return 0;
   const f = (i: number) => zoneFactors?.[i] ?? 1;
   // Mesma lógica invertida do ataque: um pivô plantado na área adversária

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Player } from '../domain/types';
+import type { Player, LateArrival } from '../domain/types';
 import { normalizePlayers } from './migration';
 import { buildFunRoster } from './funRoster';
 
@@ -10,6 +10,15 @@ interface PlayerState {
   generateTestPlayersOnEmpty: boolean;
   maxSixLinePlayers: boolean;
   separatePairs: [string, string][];
+  /**
+   * Filtro "Não jogará os primeiros jogos" (ver `LateArrival` em
+   * domain/types.ts) — PERSISTIDO no mesmo padrão de `separatePairs`: é config
+   * da pelada da semana (quem chega atrasado e quantos jogos perde), não um
+   * traço do cadastro do jogador, mas tende a se repetir semana a semana, daí
+   * o mesmo racional de persistência de `separatePairs`. Cada jogador aparece
+   * NO MÁXIMO uma vez (adicionar de novo sobrescreve a quantidade de jogos).
+   */
+  lateArrivals: LateArrival[];
   addPlayer: (player: Omit<Player, 'id'>) => void;
   updatePlayer: (id: string, player: Partial<Player>) => void;
   deletePlayer: (id: string) => void;
@@ -19,6 +28,8 @@ interface PlayerState {
   setMaxSixLinePlayers: (value: boolean) => void;
   addSeparatePair: (a: string, b: string) => void;
   removeSeparatePair: (a: string, b: string) => void;
+  setLateArrival: (playerId: string, games: number) => void;
+  removeLateArrival: (playerId: string) => void;
   setPlayers: (players: Player[]) => void;
   generateTestRoster: () => void;
 }
@@ -42,7 +53,7 @@ const CURRENT_STORAGE_VERSION = 9;
 
 type PersistablePlayerState = Pick<
   PlayerState,
-  'players' | 'neverScaleGoalkeepers' | 'generateTestPlayersOnEmpty' | 'maxSixLinePlayers' | 'separatePairs'
+  'players' | 'neverScaleGoalkeepers' | 'generateTestPlayersOnEmpty' | 'maxSixLinePlayers' | 'separatePairs' | 'lateArrivals'
 >;
 
 const INITIAL_STATE: PersistablePlayerState = {
@@ -52,6 +63,7 @@ const INITIAL_STATE: PersistablePlayerState = {
   generateTestPlayersOnEmpty: false,
   maxSixLinePlayers: false,
   separatePairs: [],
+  lateArrivals: [],
 };
 
 /**
@@ -103,6 +115,15 @@ export const usePlayerStore = create<PlayerState>()(
       removeSeparatePair: (a, b) =>
         set((state) => ({
           separatePairs: state.separatePairs.filter(([x, y]) => !((x === a && y === b) || (x === b && y === a))),
+        })),
+      setLateArrival: (playerId, games) =>
+        set((state) => {
+          const rest = state.lateArrivals.filter((la) => la.playerId !== playerId);
+          return { lateArrivals: [...rest, { playerId, games }] };
+        }),
+      removeLateArrival: (playerId) =>
+        set((state) => ({
+          lateArrivals: state.lateArrivals.filter((la) => la.playerId !== playerId),
         })),
       setPlayers: (players) => set(() => ({ players: normalizePlayers(players) })),
       generateTestRoster: () => set(() => ({ players: buildFunRoster() })),

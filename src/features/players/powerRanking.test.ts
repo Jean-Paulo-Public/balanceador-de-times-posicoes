@@ -22,25 +22,32 @@ const makePlayer = (overrides: Partial<Player>): Player => ({
 
 describe('bandIndexForValue', () => {
   it('mapeia exatamente os valores dos presets pra sua própria faixa', () => {
-    // Nenhum=0, Muito baixa=20, Baixa=35, Média=50, Alta=75, Muito alta=85, Máx=100
+    // Nenhum=0, Mínimo=10, Muito baixa=20, Baixa=35, Média=50, Alta=75, Muito alta=85, Máx=100
     expect(bandIndexForValue(0)).toBe(0);
-    expect(bandIndexForValue(20)).toBe(1);
-    expect(bandIndexForValue(35)).toBe(2);
-    expect(bandIndexForValue(50)).toBe(3);
-    expect(bandIndexForValue(75)).toBe(4);
-    expect(bandIndexForValue(85)).toBe(5);
-    expect(bandIndexForValue(100)).toBe(6);
+    expect(bandIndexForValue(10)).toBe(1);
+    expect(bandIndexForValue(20)).toBe(2);
+    expect(bandIndexForValue(35)).toBe(3);
+    expect(bandIndexForValue(50)).toBe(4);
+    expect(bandIndexForValue(75)).toBe(5);
+    expect(bandIndexForValue(85)).toBe(6);
+    expect(bandIndexForValue(100)).toBe(7);
   });
 
   it('valores manuais caem na faixa do preset mais próximo (fronteira no ponto médio)', () => {
-    expect(bandIndexForValue(9)).toBe(0); // < 10 -> nenhum
-    expect(bandIndexForValue(10)).toBe(1); // >= 10 -> muito baixa
-    expect(bandIndexForValue(27)).toBe(1); // < 27.5 -> muito baixa
-    expect(bandIndexForValue(28)).toBe(2); // >= 27.5 -> baixa
-    expect(bandIndexForValue(62)).toBe(3); // < 62.5 -> média
-    expect(bandIndexForValue(63)).toBe(4); // >= 62.5 -> alta
-    expect(bandIndexForValue(92)).toBe(5); // < 92.5 -> muito alta
-    expect(bandIndexForValue(93)).toBe(6); // >= 92.5 -> máx
+    expect(bandIndexForValue(4)).toBe(0); // < 5 -> nenhum
+    expect(bandIndexForValue(5)).toBe(1); // >= 5 -> mínimo
+    expect(bandIndexForValue(14)).toBe(1); // < 15 -> mínimo
+    expect(bandIndexForValue(15)).toBe(2); // >= 15 -> muito baixa
+    expect(bandIndexForValue(27)).toBe(2); // < 27.5 -> muito baixa
+    expect(bandIndexForValue(28)).toBe(3); // >= 27.5 -> baixa
+    expect(bandIndexForValue(42)).toBe(3); // < 42.5 -> baixa
+    expect(bandIndexForValue(43)).toBe(4); // >= 42.5 -> média
+    expect(bandIndexForValue(62)).toBe(4); // < 62.5 -> média
+    expect(bandIndexForValue(63)).toBe(5); // >= 62.5 -> alta
+    expect(bandIndexForValue(79)).toBe(5); // < 80 -> alta
+    expect(bandIndexForValue(80)).toBe(6); // >= 80 -> muito alta
+    expect(bandIndexForValue(92)).toBe(6); // < 92.5 -> muito alta
+    expect(bandIndexForValue(93)).toBe(7); // >= 92.5 -> máx
   });
 });
 
@@ -83,6 +90,14 @@ describe('buildAttributePowerRanking', () => {
   it('título usa o label legível do atributo, não a sigla', () => {
     const result = buildAttributePowerRanking([], 'CRI');
     expect(result.title).toBe('Criação');
+  });
+
+  it('agrupa na faixa "Mínimo" (preset 10) valores entre 5 e 15', () => {
+    const players = [makePlayer({ name: 'A', attributes: { ...emptyAttrs(50), FIN: 10 } })];
+    const result = buildAttributePowerRanking(players, 'FIN');
+    expect(result.bands).toHaveLength(1);
+    expect(result.bands[0].label).toBe('Mínimo');
+    expect(result.bands[0].presetValue).toBe(10);
   });
 });
 

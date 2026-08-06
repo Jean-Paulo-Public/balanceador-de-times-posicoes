@@ -23,7 +23,7 @@
 //    (húngaro) — cada jogo pode escolher um sistema diferente pra quem está em
 //    campo naquele jogo.
 
-import type { Player } from '../domain/types';
+import type { Player, LateArrival } from '../domain/types';
 import type { BalancedTeam, BalancedSlot } from './balance';
 import { effectiveGk, isAttackerPlayer } from './playerModel';
 import { chooseBestSystem, type TacticalSystem, type FormationCache } from './formationModel';
@@ -42,6 +42,15 @@ export interface GameLineup {
    */
   goalkeeperId: string | null;
   benchNames: string[];
+  /**
+   * Nomes de quem, NESTE jogo, joga pela PRIMEIRA VEZ depois de ficar ausente
+   * por atraso (ver `LateArrival` em domain/types.ts). NÃO é "voltou do
+   * banco" — ele nem estava relacionado nos jogos anteriores (não aparecia em
+   * `benchNames`), então essa lista é a única indicação de que ele chegou.
+   * Vazio na esmagadora maioria dos jogos (só marca a rodada exata da
+   * chegada, uma vez por atrasado).
+   */
+  arrivals: string[];
 }
 
 export interface TeamSchedule {
@@ -61,7 +70,39 @@ export interface TeamSchedule {
   benchOutfielders: number;
   /** Vagas de banco por rodada deste time — idem. */
   benchSlots: number;
+  /**
+   * Detalhe de uma rodada em que nem dava pra fechar os 6 de linha porque
+   * atrasados ainda ausentes deixaram gente de menos disponível — dispara a
+   * MESMA invalidez de `benchRuleBroken` (a divisão é descartada do mesmo
+   * jeito, ver `balance.ts`), mas com números PRÓPRIOS pra mensagem de
+   * bloqueio poder distinguir a causa (atraso vs. regra estrita do banco).
+   * `null` quando não houve esse tipo de falta (inclusive quando
+   * `benchRuleBroken` é true por outro motivo).
+   */
+  lineShortfall: { round: number; available: number; needed: number } | null;
 }
+
+/**
+ * Constrói o mapa jogador -> nº de jogos de ausência a partir da config bruta
+ * do usuário (ver `LateArrival` em domain/types.ts), já GRAMPEADO ao total de
+ * jogos do rodízio desta simulação: nunca deixa um jogador com `games >=
+ * totalGames` (isso o zeraria da pelada inteira sem aviso — o pedido do dono
+ * foi EXPLÍCITO em não aceitar isso em silêncio) e descarta entradas
+ * inválidas (não inteiras ou < 1). Chamado tanto por `balance.ts` (pra
+ * calcular o custo) quanto pela UI (pra exibir o MESMO rodízio que foi
+ * balanceado — ver `SimulationTab`/`fieldMapImage.ts`).
+ */
+export const clampLateArrivals = (
+  lateArrivals: readonly LateArrival[] | undefined, totalGames: number,
+): Map<string, number> => {
+  const m = new Map<string, number>();
+  for (const la of lateArrivals ?? []) {
+    if (!Number.isInteger(la.games) || la.games < 1) continue;
+    const clamped = Math.min(la.games, Math.max(0, totalGames - 1));
+    if (clamped >= 1) m.set(la.playerId, clamped);
+  }
+  return m;
+};
 
 /**
  * Reordena a fila de goleiros (já ordenada melhor-primeiro) pra que o Jogo 1
@@ -96,6 +137,13 @@ export const gamesForTeamCount = (numTeams: number): number => (numTeams === 2 ?
 
 export const buildTeamSchedule = (
   team: BalancedTeam, totalGames = 6, cache?: FormationCache, allowTwoConsecutive = false,
+  /**
+   * id -> nº de jogos de ausência (ver `LateArrival`/`clampLateArrivals`
+   * acima). Só os ids presentes no roster DESTE time importam — ids de fora
+   * são ignorados silenciosamente (é assim que um jogador removido/desativado
+   * referenciado no filtro não quebra nada).
+   */
+  lateArrivals?: ReadonlyMap<string, number>,
 ): TeamSchedule => {
   const roster: Player[] = [
     ...team.slots.map((s) => s.player),
@@ -121,13 +169,25 @@ export const buildTeamSchedule = (
     goalkeeperName: team.goalkeeper?.name ?? null,
     goalkeeperId: team.goalkeeper?.id ?? null,
     benchNames: team.bench.map((b) => b.name),
+    arrivals: [],
   };
 
-  // Sem variação possível: 1 goleiro (ou nenhum) e sem banco.
-  if (k <= 1 && benchCount === 0) {
+  // Rodada (0-based) em que `p` ainda está AUSENTE por atraso — não é banco,
+  // é "não estava lá" (ver comentário de `LateArrival`): fica fora do goleiro
+  // em fila, fora do pool de banco/linha e fora da contagem de justiça do
+  // banco enquanto isso for true.
+  const isLateAbsent = (p: Player, round: number): boolean => {
+    const games = lateArrivals?.get(p.id);
+    return games != null && round < games;
+  };
+  const hasAnyLateArrival = roster.some((p) => isLateAbsent(p, 0));
+
+  // Sem variação possível: 1 goleiro (ou nenhum), sem banco e ninguém atrasado
+  // (um atrasado sempre introduz variação entre rodadas, mesmo sem banco).
+  if (k <= 1 && benchCount === 0 && !hasAnyLateArrival) {
     return {
       games: [baseLineup], constant: true, goalkeeperWarning,
-      benchRuleBroken: false, benchOutfielders: outfielders.length, benchSlots: benchCount,
+      benchRuleBroken: false, benchOutfielders: outfielders.length, benchSlots: benchCount, lineShortfall: null,
     };
   }
 
@@ -136,12 +196,57 @@ export const buildTeamSchedule = (
   let benchedLastRound = new Set<string>();
   const exceptionSpentAtRound = new Map<string, number>();
   let benchRuleBroken = false;
+  let lineShortfall: TeamSchedule['lineShortfall'] = null;
   for (let g = 0; g < totalGames; g++) {
-    const goalie = fielded && k > 0 ? keepers[g % k] : null;
-    const lineKeepers = keepers.filter((p) => p !== goalie);
+    // Nomes que fazem sua PRIMEIRA aparição nesta rodada (ausentes justo até
+    // a rodada anterior) — indicação PRÓPRIA de "chegada", nunca confundida
+    // com "saiu do banco" (ele não estava em `benchNames` em rodada nenhuma).
+    const arrivals = roster.filter((p) => lateArrivals?.get(p.id) === g).map((p) => p.name);
+
+    const keepersAvail = keepers.filter((p) => !isLateAbsent(p, g));
+    const kAvail = keepersAvail.length;
+    const goalie = fielded && kAvail > 0 ? keepersAvail[g % kAvail] : null;
+    const lineKeepers = keepersAvail.filter((p) => p !== goalie);
+    const outfieldersAvail = outfielders.filter((p) => !isLateAbsent(p, g));
+    const neededFromOutfielders = 6 - lineKeepers.length;
+
+    // Baseline SEM atraso nenhum (mesma conta que o código já fazia antes
+    // desta feature existir, com `k`/`outfielders` cheios) — usada só pra
+    // saber se uma eventual falta de gente pra fechar a linha é CAUSADA pelo
+    // atraso, ou se já era uma condição degenerada preexistente (roster sem
+    // corpo suficiente pra sustentar goleiro interno + 6 de linha, algo que o
+    // motor de geração de divisões evita na prática). Sem essa distinção,
+    // esta checagem NOVA acabaria reportando `lineShortfall` (e descartando a
+    // divisão) em casos que NADA têm a ver com atraso — regressão que não
+    // pode acontecer (zero atrasados tem de dar EXATAMENTE o resultado de
+    // antes).
+    const baseGoalie = fielded && k > 0 ? keepers[g % k] : null;
+    const baseLineKeepersCount = keepers.filter((p) => p !== baseGoalie).length;
+    const baseNeededFromOutfielders = 6 - baseLineKeepersCount;
+    const preexistingShortfall = outfielders.length < baseNeededFromOutfielders;
+
+    if (!preexistingShortfall && outfieldersAvail.length < neededFromOutfielders) {
+      // Nem sequer dá pra fechar os 6 de linha nesta rodada — os atrasados
+      // ainda ausentes deixaram gente de menos disponível. É uma
+      // inviabilidade REAL (mesma categoria de `benchRuleBroken`: a divisão
+      // é descartada — ver `balance.ts`), mas com números PRÓPRIOS pra
+      // mensagem de bloqueio distinguir a causa.
+      benchRuleBroken = true;
+      if (!lineShortfall) {
+        lineShortfall = { round: g, available: outfieldersAvail.length + lineKeepers.length, needed: 6 };
+      }
+      games.push({ ...baseLineup, game: g + 1, benchNames: [], arrivals });
+      continue;
+    }
+    // `Math.max(0, ...)`: mesmo clamp que o cálculo estático antigo já fazia
+    // (`Math.max(0, n - onField)`) — só é negativo na condição degenerada
+    // preexistente (`preexistingShortfall`), tratada acima como "não é causa
+    // de atraso", então cai aqui com banco 0 (chooseBenchGroup não faz nada) e
+    // o `linePlayers.length !== 6` mais abaixo reproduz o fallback antigo.
+    const benchCountThisRound = Math.max(0, outfieldersAvail.length - neededFromOutfielders);
     const { benched, spentExceptionIds, impossible } = chooseBenchGroup({
-      outfielders,
-      benchCount,
+      outfielders: outfieldersAvail,
+      benchCount: benchCountThisRound,
       benchCounts,
       benchedLastRound,
       alwaysOnField: lineKeepers,
@@ -155,17 +260,21 @@ export const buildTeamSchedule = (
       // daqui pra frente (será descartada por `balance.ts`); registra um
       // jogo-placeholder só pra manter o array no tamanho esperado.
       benchRuleBroken = true;
-      games.push({ ...baseLineup, game: g + 1 });
+      games.push({ ...baseLineup, game: g + 1, arrivals });
       continue;
     }
     for (const id of spentExceptionIds) exceptionSpentAtRound.set(id, g);
     const benchedSet = new Set(benched.map((p) => p.id));
+    // Só quem REALMENTE sentou (dentre os disponíveis nesta rodada) soma na
+    // contagem de justiça — um atrasado ausente nunca passa por aqui (não
+    // está em `outfieldersAvail`), então seu `benchCounts` fica intacto em 0
+    // enquanto durar a ausência (pedido explícito do dono).
     for (const p of benched) benchCounts.set(p.id, (benchCounts.get(p.id) ?? 0) + 1);
     benchedLastRound = benchedSet;
-    const lineOutfielders = outfielders.filter((p) => !benchedSet.has(p.id));
+    const lineOutfielders = outfieldersAvail.filter((p) => !benchedSet.has(p.id));
     const linePlayers = [...lineKeepers, ...lineOutfielders].slice(0, 6);
     if (linePlayers.length !== 6) {
-      games.push({ ...baseLineup, game: g + 1 });
+      games.push({ ...baseLineup, game: g + 1, arrivals });
       continue;
     }
     const inf = chooseBestSystem(linePlayers, cache);
@@ -185,13 +294,16 @@ export const buildTeamSchedule = (
       goalkeeperName: goalie?.name ?? null,
       goalkeeperId: goalie?.id ?? null,
       benchNames: benched.map((b) => b.name),
+      arrivals,
     });
   }
   // Colapsa se, na prática, todos os jogos ficaram idênticos (sem variação real).
   const sig = (g: GameLineup): string =>
     [g.goalkeeperName ?? '', ...g.slots.map((s) => s.player.name).sort(), '#', ...[...g.benchNames].sort()].join('|');
   const allSame = games.every((g) => sig(g) === sig(games[0]));
-  const scheduleResult = { goalkeeperWarning, benchRuleBroken, benchOutfielders: outfielders.length, benchSlots: benchCount };
+  const scheduleResult = {
+    goalkeeperWarning, benchRuleBroken, benchOutfielders: outfielders.length, benchSlots: benchCount, lineShortfall,
+  };
   if (allSame) return { games: [games[0]], constant: true, ...scheduleResult };
   return { games, constant: false, ...scheduleResult };
 };

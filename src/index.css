@@ -198,6 +198,12 @@ h1, h2, h3, h4 {
   border-radius: var(--radius-pill);
   transition: color 0.2s ease, background 0.2s ease;
   flex: 1;
+  /* Flex items default to min-width: auto, which floors their shrink at the
+     content's min-content size (icon + longest unbreakable word). On narrow
+     screens the three tabs together exceed the pill's width and the last
+     one overflows past the edge. min-width: 0 lets flex-shrink actually
+     shrink the item down to the available space. */
+  min-width: 0;
 }
 
 .nav-item.active {
@@ -209,7 +215,27 @@ h1, h2, h3, h4 {
 .nav-item span {
   font-size: 0.85rem;
   font-weight: 600;
+  text-align: center;
 }
+
+@media (max-width: 480px) {
+  .bottom-nav-inner {
+    gap: var(--space-1);
+    padding: 6px;
+  }
+
+  .nav-item {
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 6px;
+  }
+
+  .nav-item span {
+    font-size: 0.7rem;
+    line-height: 1.15;
+  }
+}
+
 
 /* Forms */
 .input-group {

@@ -18,18 +18,19 @@
 // jogador tenha sido digitado manualmente com 73 ou 78 (ainda mais perto de
 // 75 que de qualquer outro preset).
 //
-// Presets atuais (ATTR_PRESETS): Nenhum=0, Muito baixa=20, Baixa=35, Média=50,
-// Alta=75, Muito alta=85, Máx=100. Fronteiras (pontos médios): 10 / 27,5 / 42,5
-// / 62,5 / 80 / 92,5. Faixas resultantes:
-//   nenhum:      [0, 10)
-//   muito_baixo: [10, 27.5)
+// Presets atuais (ATTR_PRESETS): Nenhum=0, Mínimo=10, Muito baixa=20, Baixa=35,
+// Média=50, Alta=75, Muito alta=85, Máx=100. Fronteiras (pontos médios):
+// 5 / 15 / 27,5 / 42,5 / 62,5 / 80 / 92,5. Faixas resultantes:
+//   nenhum:      [0, 5)
+//   minimo:      [5, 15)
+//   muito_baixo: [15, 27.5)
 //   baixo:       [27.5, 42.5)
 //   medio:       [42.5, 62.5)
 //   alta:        [62.5, 80)
 //   muito_alta:  [80, 92.5)
 //   max:         [92.5, 100]
-// (nomes das faixas pedidas — "nenhum/muito baixo/baixo/médio/alta/muito
-// alta/max" — casam 1:1 com os 7 presets, então não há remapeamento.)
+// (nomes das faixas pedidas — "nenhum/mínimo/muito baixo/baixo/médio/alta/
+// muito alta/max" — casam 1:1 com os 8 presets, então não há remapeamento.)
 
 import type { Player } from '../../domain/types';
 import { ATTR_PRESETS, ATTRIBUTE_META, type AttributeKey } from '../../domain/attributes';

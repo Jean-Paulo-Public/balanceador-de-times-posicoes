@@ -60,6 +60,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
   const [positionOrderIndifferent, setPositionOrderIndifferent] = useState<boolean>(
     editingPlayer?.positionOrderIndifferent ?? false,
   );
+  const [veteran, setVeteran] = useState<boolean>(editingPlayer?.veteran ?? false);
   const setAttr = (k: AttributeKey, v: number) => setAttributes((prev) => ({ ...prev, [k]: clampAttr(v) }));
 
   const boxToBox = hasEnabledBoxToBox(acceptedPositions);
@@ -176,6 +177,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     acceptedPositions,
     positionOverrides,
     positionOrderIndifferent,
+    veteran,
     handicapPct: editingPlayer?.handicapPct,
   };
   const profile = describePlayerProfile(attributes);
@@ -201,6 +203,7 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
       acceptedPositions,
       positionOverrides,
       positionOrderIndifferent,
+      veteran,
     };
 
     if (editingPlayer) {
@@ -233,6 +236,14 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
             <input type="checkbox" checked={isGoalkeeper} onChange={e => setIsGoalkeeper(e.target.checked)} />
             Consegue jogar no Gol? (Emergência)
           </label>
+        </div>
+
+        <div className={styles.checkRow}>
+          <label className="checkbox-group">
+            <input type="checkbox" checked={veteran} onChange={e => setVeteran(e.target.checked)} />
+            Veterano
+          </label>
+          <p className={styles.helpText}>Um dos mais velhos do racha — o balanceador espalha os veteranos igualmente entre os times.</p>
         </div>
 
         <div className="input-group">

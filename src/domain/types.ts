@@ -82,6 +82,18 @@ export interface Player {
    * habilitadas). Ver `identityCost` em engine/formationModel.ts.
    */
   positionOrderIndifferent?: boolean;
+  /**
+   * "Os mais velhos do racha" — marcação manual e cosmética (mesmo padrão de
+   * `positionOrderIndifferent`: campo booleano opcional, sem afetar
+   * atributos/OVR/capacidade de posição). Alimenta só a REGRA DE DISTRIBUIÇÃO
+   * DE VETERANOS (hard, ver `veteranDistributionBroken` em engine/balance.ts):
+   * com `V` veteranos ativos e `T` times, cada divisão candidata só é aceita
+   * se cada time ficar com entre `floor(V/T)` e `ceil(V/T)` veteranos — uma
+   * divisão que concentra veteranos num só time é EXCLUÍDA dos resultados,
+   * nunca só penalizada no custo. Ausente/`false` = comportamento atual (sem
+   * nenhuma restrição de veterano).
+   */
+  veteran?: boolean;
 }
 
 export interface TeamSlotPlayer {
@@ -95,6 +107,28 @@ export interface TeamSlotPlayer {
   roleShort?: string;
   /** Meia/atacante empurrado pra outra função por falta de gente de origem. */
   improvised?: boolean;
+}
+
+/**
+ * "Atrasado" — jogador que chega depois do início da pelada (ex.: saiu do
+ * trabalho) e por isso fica AUSENTE nos primeiros `games` jogos do rodízio.
+ * Guardado FORA do objeto `Player`, no mesmo padrão de `separatePairs` (ver
+ * `usePlayerStore`): é config da pelada da semana, não um traço do cadastro.
+ *
+ * IMPORTANTE (não confundir com "ficar no banco"): durante os `games`
+ * primeiros jogos ele está fora da simulação por completo — não conta como
+ * reserva, não ocupa vaga de banco, não entra na contagem de justiça do
+ * rodízio de banco (ver `benchRotation.ts`/`buildTeamSchedule` em
+ * engine/rotation.ts). Depois de `games` jogos ele volta ao rodízio normal, e
+ * a partir daí a regra estrita do banco vale pra ele como pra qualquer um.
+ *
+ * `games` é validado/limitado no PONTO DE USO (ver `clampLateArrivals` em
+ * engine/rotation.ts): sempre inteiro >= 1 e sempre MENOR que o total de
+ * jogos do rodízio (nunca zera o jogador da pelada inteira em silêncio).
+ */
+export interface LateArrival {
+  playerId: string;
+  games: number;
 }
 
 export interface Team {

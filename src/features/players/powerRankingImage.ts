@@ -50,7 +50,7 @@ export const buildPowerRankingImage = async (data: PowerRankingData): Promise<Bl
 
   let y = PAD + TITLE_H;
   const BAND_COLORS: Record<string, string> = {
-    Nenhum: '#5a6472', 'Muito baixa': '#c0563a', Baixa: '#d98a3d',
+    Nenhum: '#5a6472', Mínimo: '#a35a3f', 'Muito baixa': '#c0563a', Baixa: '#d98a3d',
     Média: '#d6c33d', Alta: '#7fc24d', 'Muito alta': '#3fae6a', Máx: '#2f9e9e',
   };
 

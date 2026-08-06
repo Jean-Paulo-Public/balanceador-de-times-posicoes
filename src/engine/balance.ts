@@ -12,12 +12,13 @@
 // o pedido da Fase 6 (média de 6 jogos, fila do goleiro, sem penalidade de
 // congestionamento de pivô — a restrição de 1 pivô por time é estrutural).
 
-import type { Player, SimulationResult } from '../domain/types';
-import type { LinePosition } from '../domain/positions';
+import type { Player, SimulationResult, LateArrival } from '../domain/types';
+import { enabledLinePositions, hasEnabledBoxToBox, type LinePosition } from '../domain/positions';
+import { teamDisplayLabel } from '../domain/teamLabel';
 import { effectiveAttributesBase, effectiveGk } from './playerModel';
-import { ovr, potencialAtaque, estabilidadeDefensiva, coberturaGol } from './scoring';
+import { ovr, potencialAtaque, estabilidadeDefensiva, coberturaGol, DEF_STABILITY_BETA } from './scoring';
 import { chooseBestSystem, createFormationCache, type FormationCache, type FormationShape, type FieldZone } from './formationModel';
-import { buildTeamSchedule, gamesForTeamCount } from './rotation';
+import { buildTeamSchedule, gamesForTeamCount, clampLateArrivals } from './rotation';
 import { generateTeams } from './generateTeams';
 import { checkPositionFeasibility, joinNames, type FeasibilityResult } from './feasibility';
 
@@ -110,6 +111,13 @@ interface TeamMetrics {
   benchOutfielders: number;
   /** Vagas de banco por rodada deste time — idem. */
   benchSlots: number;
+  /**
+   * Detalhe de uma rodada em que atrasados ainda ausentes deixaram gente de
+   * menos pra fechar os 6 de linha (ver `TeamSchedule.lineShortfall` em
+   * rotation.ts) — dispara a MESMA invalidez de `benchRuleBroken`, mas com
+   * números próprios pra distinguir a causa na mensagem de bloqueio.
+   */
+  lineShortfall: { round: number; available: number; needed: number } | null;
 }
 
 /** Jogadores aptos ao gol que revezam neste time (reservado + aptos na linha). */
@@ -126,6 +134,7 @@ const baseInference = (t: DivTeam, cache?: FormationCache) => chooseBestSystem(t
  */
 const teamMetrics = (
   t: DivTeam, neverGk: boolean, allowTwoConsecutiveBench: boolean, cache?: FormationCache, totalGames = 6,
+  lateArrivals?: ReadonlyMap<string, number>,
 ): TeamMetrics => {
   if (t.line.length !== 6) {
     const lineAttrs = t.line.map((r) => r.attrs);
@@ -133,7 +142,7 @@ const teamMetrics = (
       geral: mean(lineAttrs.map((a) => ovr(a, 'Geral'))), off: 0, def: 0,
       offDisplay: 0, defDisplay: 0, recuo: 0, pressao: 0,
       cobertura: null, fitQuality: -100, feasible: false, goalkeeperWarning: null,
-      benchRuleBroken: false, benchOutfielders: 0, benchSlots: 0,
+      benchRuleBroken: false, benchOutfielders: 0, benchSlots: 0, lineShortfall: null,
     };
   }
   const inf = baseInference(t, cache);
@@ -161,7 +170,7 @@ const teamMetrics = (
     },
   };
 
-  const sched = buildTeamSchedule(provisional, totalGames, cache, allowTwoConsecutiveBench);
+  const sched = buildTeamSchedule(provisional, totalGames, cache, allowTwoConsecutiveBench, lateArrivals);
   // Nota de goleiro por jogador — a nota do goleiro é INDEPENDENTE: não é
   // afetada por nenhum outro atributo e não afeta nenhuma outra métrica.
   const gkOf = new Map(
@@ -193,7 +202,7 @@ const teamMetrics = (
     const offMeanF = offF.length ? mean(offF) : 1;
     const defMeanF = defF.length ? mean(defF) : 1;
 
-    const defLinha = estabilidadeDefensiva(lineAttrs, 0.6, defF);
+    const defLinha = estabilidadeDefensiva(lineAttrs, DEF_STABILITY_BETA, defF);
     const offPond = potencialAtaque(lineAttrs, 0.5, offF);
     // Versões de EXIBIÇÃO: desfazem o encolhimento médio causado pelos fatores,
     // devolvendo o número à régua 0–100. A nota do goleiro NÃO é renormalizada
@@ -240,6 +249,7 @@ const teamMetrics = (
     benchRuleBroken: sched.benchRuleBroken,
     benchOutfielders: sched.benchOutfielders,
     benchSlots: sched.benchSlots,
+    lineShortfall: sched.lineShortfall,
   };
 };
 
@@ -284,6 +294,195 @@ const SEPARATION_PENALTY = 60;
 // a restrição "no máximo 1 pivô por time" já é ESTRUTURAL (o húngaro nunca
 // escala 2 jogadores na mesma vaga). A penalidade extra só distorcia o custo.
 
+// ---------------------------------------------------------------------------
+// Regra de distribuição de veteranos (própria — ver `veteran` em domain/types.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Nº de veteranos alocados a este time nesta divisão — ELENCO COMPLETO
+ * (goleiro reservado + 6 de linha + banco), lido direto do `DivTeam` que sai
+ * do motor de divisão. DELIBERADAMENTE não passa pelo rodízio de jogos
+ * (`buildTeamSchedule`/`chooseBenchGroup`): a conta é feita UMA VEZ, na
+ * FORMAÇÃO dos times, não jogo a jogo. Ver `veteranDistributionBroken` abaixo
+ * para o porquê isso importa.
+ */
+const veteransOf = (t: DivTeam): RP[] =>
+  [t.gk, ...t.line, ...t.bench].filter((r): r is RP => !!r && !!r.player.veteran);
+
+/**
+ * Veterano cadastrado SÓ como pivô (nenhuma outra posição habilitada, e não é
+ * coringa). Caso real do dono: gente que joga de segundo atacante/meia-atacante
+ * e só "quebra um galho" no pivô acaba marcada apenas como PIVO na lista.
+ */
+const isPivotOnly = (p: Player): boolean => {
+  if (hasEnabledBoxToBox(p.acceptedPositions)) return false;
+  const enabled = enabledLinePositions(p.acceptedPositions);
+  return enabled.length === 1 && enabled[0] === 'PIVO';
+};
+
+/**
+ * Um veterano PIVÔ-ONLY só CONTA para a distribuição quando o total de veteranos
+ * é <= o nº de TIMES, ou múltiplo do nº de times (regra do dono).
+ *
+ * O racional: nesses dois casos a distribuição já sai limpa sozinha — com
+ * `V <= T` cada time leva no máximo 1 veterano, e com `V` múltiplo de `T` a
+ * divisão é exata (`V/T` em cada) — então não há motivo pra tratar o pivô de
+ * forma especial. Fora desses casos algum time levaria um veterano A MAIS, e é
+ * aí que o pivô sai da conta: ele fica plantado na área e não corre o campo,
+ * então o time DELE é quem aguenta o veterano extra. Ignorá-lo aqui deixa os
+ * veteranos que CORREM se dividirem igualmente, e o pivô cai onde o custo
+ * preferir — resultando exatamente no que o dono quer (nunca dois veteranos
+ * "que correm" juntos enquanto o outro time fica só com o pivô).
+ * Exemplo: 3 veteranos (2 comuns + 1 pivô) em 2 times → 3 > 2 e 3 % 2 != 0, o
+ * pivô é ignorado, os 2 comuns ficam 1 em cada, e o pivô acompanha um deles.
+ *
+ * O `total` é o nº de veteranos marcados ANTES de qualquer exclusão — se fosse
+ * a contagem já filtrada, a condição seria circular (a exclusão dependeria do
+ * resultado dela mesma).
+ */
+const pivotOnlyVeteransCount = (total: number, numTeams: number): boolean =>
+  total <= numTeams || total % numTeams === 0;
+
+/**
+ * Nº de veteranos que a regra REALMENTE considera nesta divisão (já sem os
+ * pivô-only ignorados). É este número que a mensagem de bloqueio deve citar —
+ * o total bruto confundiria o usuário, que veria "há 4 veteranos" numa
+ * distribuição calculada sobre 3.
+ */
+export const effectiveVeteranCount = (teams: DivTeam[]): number => {
+  const perTeam = teams.map(veteransOf);
+  const total = perTeam.reduce((s, v) => s + v.length, 0);
+  const includePivotOnly = pivotOnlyVeteransCount(total, teams.length);
+  return perTeam.reduce((s, vs) => s + vs.filter((r) => includePivotOnly || !isPivotOnly(r.player)).length, 0);
+};
+
+/**
+ * Sinal de invalidez por DISTRIBUIÇÃO DE VETERANOS — regra HARD e própria,
+ * independente de `feasible` (encaixe de POSIÇÃO/sistema tático, Fase 5) e de
+ * `benchRuleBroken` (regra de ROTAÇÃO DO BANCO, Fase 6+): esta é sobre como os
+ * jogadores marcados `veteran` ficam distribuídos ENTRE OS TIMES da divisão.
+ * Com `V` veteranos ativos e `T` times, cada time só pode ficar com um nº de
+ * veteranos entre `floor(V/T)` e `ceil(V/T)` — uma divisão que concentra
+ * veteranos num só time viola isso e é EXCLUÍDA em `balanceTeamsOptions`
+ * (nunca só penalizada no custo), do mesmo jeito que a regra do banco.
+ *
+ * IMPORTANTE (pedido explícito do dono): esta regra vale só pra COMPOSIÇÃO DO
+ * TIME (elenco completo, `DivTeam[]` antes de qualquer rodízio) — NÃO por
+ * jogo. Reaproveita da regra do banco só a ARQUITETURA de invalidez (sinal
+ * por divisão + filtro + mensagem no report), nunca o laço por rodada: quem
+ * está EM CAMPO num jogo específico do rodízio pode ficar temporariamente
+ * desbalanceado (um veterano no banco daquela rodada, por exemplo) sem que
+ * isso invalide a divisão — só a distribuição do ELENCO TODO é que precisa
+ * bater com `floor(V/T)`/`ceil(V/T)`. Checar por jogo tornaria a restrição
+ * muito mais dura do que o pedido (e provavelmente infactível na prática),
+ * além de ficar mais caro (dependeria de rodar o rodízio pra saber).
+ */
+// Exportado só pra teste (ver balance.veteranDistribution.test.ts) — mesmo
+// motivo de `W` ser exportado: verificar a regra sem duplicar a fórmula.
+export const veteranDistributionBroken = (teams: DivTeam[]): boolean => {
+  const perTeam = teams.map(veteransOf);
+  const total = perTeam.reduce((s, v) => s + v.length, 0);
+  if (total === 0) return false; // sem veteranos marcados = sem restrição (comportamento de hoje)
+
+  // Veterano pivô-only entra na conta só sob a condição do dono:
+  // total <= nº de times, ou múltiplo do nº de times.
+  const includePivotOnly = pivotOnlyVeteransCount(total, teams.length);
+  const counts = perTeam.map((vs) => vs.filter((r) => includePivotOnly || !isPivotOnly(r.player)).length);
+
+  // A distribuição floor/ceil vale sobre o total EFETIVO (após a exclusão) —
+  // usar o total bruto exigiria espalhar veteranos que a regra acabou de ignorar.
+  const effective = counts.reduce((a, b) => a + b, 0);
+  if (effective === 0) return false;
+  const t = teams.length;
+  const lo = Math.floor(effective / t);
+  const hi = Math.ceil(effective / t);
+  return counts.some((c) => c < lo || c > hi);
+};
+
+/**
+ * Mensagem de bloqueio quando NENHUMA divisão candidata cumpre a distribuição
+ * equilibrada de veteranos (nem ignorando a regra, quando ela está desligada
+ * — se `ignoreVeteranDistribution` estivesse ligado esta função nem seria
+ * chamada, ver `balanceTeamsOptions`). Cita os NÚMEROS REAIS (quantos
+ * veteranos ativos, quantos times, a distribuição exigida) e as saídas.
+ */
+// Exportado só pra teste — verificar o texto da mensagem sem duplicá-lo.
+export const veteranInfeasibilityMessage = (totalVeterans: number, numTeams: number): string => {
+  const lo = Math.floor(totalVeterans / numTeams);
+  const hi = Math.ceil(totalVeterans / numTeams);
+  const distribution = lo === hi
+    ? `exatamente ${lo} veterano(s) por time`
+    : `entre ${lo} e ${hi} veteranos por time`;
+  const cause =
+    `há ${totalVeterans} veterano(s) ativo(s) para ${numTeams} times — a distribuição exigida é ${distribution}, ` +
+    `e nenhuma divisão candidata conseguiu cumprir isso sem concentrar veteranos demais num time.`;
+  const options = [
+    'marque a opção "Desconsiderar veteranos"',
+    'mude a quantidade de times',
+    'revise quem está marcado como veterano no cadastro',
+  ];
+  return `Nenhuma divisão respeita a distribuição equilibrada de veteranos: ${cause} Saídas: ${joinNames(options)}.`;
+};
+
+// ---------------------------------------------------------------------------
+// Regra de distribuição de ATRASADOS (própria — ver `LateArrival` em
+// domain/types.ts) — MESMA arquitetura da regra de veteranos acima (sinal por
+// divisão, checado sobre o ELENCO COMPLETO, UMA vez por divisão candidata,
+// nunca dentro do rodízio de jogos), mas SEM a exceção de "pivô-only" (não faz
+// sentido aqui: atraso não tem relação com posição jogada) — só floor/ceil
+// puro. NÃO CONFUNDIR com `veteranDistributionBroken` nem com
+// `benchRuleBroken`/`lineShortfall` (esses dois são sobre o RODÍZIO DE JOGOS,
+// checados jogo a jogo dentro de `teamMetrics`/`buildTeamSchedule`) — este é
+// um QUARTO conceito de invalidez, independente dos outros três: é sobre como
+// os jogadores marcados como "atrasados" (ver `LateArrival`) ficam
+// distribuídos ENTRE OS TIMES da divisão, sem olhar pro rodízio.
+// ---------------------------------------------------------------------------
+
+/** Jogadores marcados como atrasados neste time (ELENCO COMPLETO: gol + linha + banco). */
+const lateArrivalsOf = (t: DivTeam, lateArrivals: ReadonlyMap<string, number>): RP[] =>
+  [t.gk, ...t.line, ...t.bench].filter((r): r is RP => !!r && lateArrivals.has(r.player.id));
+
+/**
+ * Sinal de invalidez por DISTRIBUIÇÃO DE ATRASADOS — regra HARD e própria
+ * (ver comentário acima). Com `A` atrasados (contando só quem de fato está em
+ * algum time desta divisão — um id "sobrando" no filtro que não corresponde a
+ * ninguém ativo simplesmente não conta) e `T` times, cada time só pode ficar
+ * com um nº de atrasados entre `floor(A/T)` e `ceil(A/T)`.
+ */
+// Exportado só pra teste (mesmo motivo de `veteranDistributionBroken`).
+export const lateArrivalDistributionBroken = (teams: DivTeam[], lateArrivals: ReadonlyMap<string, number>): boolean => {
+  if (lateArrivals.size === 0) return false; // sem atrasados marcados = sem restrição (comportamento de hoje)
+  const counts = teams.map((t) => lateArrivalsOf(t, lateArrivals).length);
+  const total = counts.reduce((a, b) => a + b, 0);
+  if (total === 0) return false; // nenhum dos ids marcados está de fato num time desta divisão
+  const t = teams.length;
+  const lo = Math.floor(total / t);
+  const hi = Math.ceil(total / t);
+  return counts.some((c) => c < lo || c > hi);
+};
+
+/**
+ * Mensagem de bloqueio quando NENHUMA divisão candidata cumpre a distribuição
+ * equilibrada de atrasados. Cita os NÚMEROS REAIS (quantos atrasados, quantos
+ * times, a distribuição exigida).
+ */
+// Exportado só pra teste — verificar o texto sem duplicá-lo.
+export const lateArrivalInfeasibilityMessage = (totalLateArrivals: number, numTeams: number): string => {
+  const lo = Math.floor(totalLateArrivals / numTeams);
+  const hi = Math.ceil(totalLateArrivals / numTeams);
+  const distribution = lo === hi
+    ? `exatamente ${lo} atrasado(s) por time`
+    : `entre ${lo} e ${hi} atrasados por time`;
+  const cause =
+    `há ${totalLateArrivals} jogador(es) marcado(s) como atrasado(s) para ${numTeams} times — a distribuição exigida ` +
+    `é ${distribution}, e nenhuma divisão candidata conseguiu cumprir isso sem concentrar atrasados demais num time.`;
+  const options = [
+    'revise quem está marcado como atrasado no filtro "Não jogará os primeiros jogos"',
+    'mude a quantidade de times',
+  ];
+  return `Nenhuma divisão respeita a distribuição equilibrada de atrasados: ${cause} Saídas: ${joinNames(options)}.`;
+};
+
 /** Mapa id do jogador -> índice do time em que ele está (linha, gol ou banco). */
 const teamOfIdMap = (teams: DivTeam[]): Map<string, number> => {
   const m = new Map<string, number>();
@@ -300,9 +499,10 @@ const teamOfIdMap = (teams: DivTeam[]): Map<string, number> => {
  */
 const divisionCost = (
   teams: DivTeam[], neverGk: boolean, allowTwoConsecutiveBench: boolean, separate: [string, string][] = [], cache?: FormationCache,
+  lateArrivals?: ReadonlyMap<string, number>,
 ): number => {
   const games = gamesForTeamCount(teams.length);
-  const ms = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, games));
+  const ms = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, games, lateArrivals));
   let c = 0;
   c += W.geral * variance(ms.map((m) => m.geral));
   c += W.off * variance(ms.map((m) => m.off));
@@ -330,9 +530,11 @@ const divisionCost = (
 // ---------------------------------------------------------------------------
 
 const localSearch = (
-  teams: DivTeam[], neverGk: boolean, allowTwoConsecutiveBench: boolean, separate: [string, string][], cache?: FormationCache, maxIter = 60,
+  teams: DivTeam[], neverGk: boolean, allowTwoConsecutiveBench: boolean, separate: [string, string][],
+  respectVeteranDistribution: boolean, cache?: FormationCache, maxIter = 60,
+  lateArrivals?: ReadonlyMap<string, number>,
 ): void => {
-  let cur = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache);
+  let cur = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivals);
   for (let iter = 0; iter < maxIter; iter++) {
     let bestDelta = -1e-6;
     let best: [number, number, number, number] | null = null;
@@ -344,9 +546,21 @@ const localSearch = (
             const B = teams[j].line[b];
             teams[i].line[a] = B;
             teams[j].line[b] = A;
-            const nc = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache);
+            // A troca de identidade entre times NÃO é invariante pra
+            // distribuição de veteranos NEM pra de atrasados (diferente de
+            // `benchRuleBroken`, que só depende do TAMANHO de linha/banco):
+            // mover um veterano/atrasado de time pode tirar uma divisão que
+            // passou no filtro inicial de volta pra um estado que viola a
+            // regra. A busca local NUNCA pode sair de um estado válido pra um
+            // inválido — por isso qualquer troca que resulte em violação de
+            // QUALQUER uma das duas é descartada aqui, ANTES de sequer
+            // comparar custo (as duas são hard, não entram no custo).
+            const violatesVeteranRule = respectVeteranDistribution && veteranDistributionBroken(teams);
+            const violatesLateArrivalRule = !!lateArrivals?.size && lateArrivalDistributionBroken(teams, lateArrivals);
+            const nc = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivals);
             teams[i].line[a] = A; // desfaz
             teams[j].line[b] = B;
+            if (violatesVeteranRule || violatesLateArrivalRule) continue;
             const delta = nc - cur;
             if (delta < bestDelta) { bestDelta = delta; best = [i, a, j, b]; }
           }
@@ -428,6 +642,7 @@ const round = (n: number): number => Math.round(n);
 
 const buildBalancedTeam = (
   t: DivTeam, neverGk: boolean, allowTwoConsecutiveBench: boolean, cache?: FormationCache, totalGames = 6,
+  lateArrivals?: ReadonlyMap<string, number>,
 ): BalancedTeam => {
   const inf = baseInference(t, cache);
   const slots: BalancedSlot[] = inf.assignments.map((a) => ({
@@ -439,7 +654,7 @@ const buildBalancedTeam = (
     y: a.y,
   }));
   const rot = rotatingGks(t);
-  const m = teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, totalGames);
+  const m = teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, totalGames, lateArrivals);
   return {
     id: t.id,
     name: t.name,
@@ -478,6 +693,25 @@ export interface BalanceOptions {
    * divisão que não cumpre a regra estrita é EXCLUÍDA dos resultados.
    */
   allowTwoConsecutiveBench?: boolean;
+  /**
+   * Checkbox do dono "Desconsiderar veteranos" (default false, NÃO
+   * persistido — componente local na UI, mesmo padrão de
+   * `allowTwoConsecutiveBench`, ver `SimulationTab`): quando ligado, a regra
+   * de distribuição de veteranos (`veteranDistributionBroken`) é IGNORADA por
+   * completo — nenhuma divisão é excluída por causa dela.
+   */
+  ignoreVeteranDistribution?: boolean;
+  /**
+   * Filtro "Não jogará os primeiros jogos" (ver `LateArrival` em
+   * domain/types.ts, persistido em `usePlayerStore` no mesmo padrão de
+   * `separatePairs`): cada entrada marca um jogador AUSENTE nos primeiros
+   * `games` jogos do rodízio (chegou atrasado). Espalhados entre os times
+   * pela mesma arquitetura hard de `veteranDistributionBroken` (ver
+   * `lateArrivalDistributionBroken` acima) — SEM checkbox de escape (ao
+   * contrário de veteranos): não foi pedido um, e a regra em si já é rara de
+   * travar (só quando o Nº de atrasados não divide igual entre os times).
+   */
+  lateArrivals?: LateArrival[];
 }
 
 /** Assinatura canônica da divisão (quem está com quem), ignorando ordem/funções. */
@@ -502,6 +736,29 @@ export interface BalanceRunReport {
    * de montar e simular o rodízio de cada divisão candidata).
    */
   benchInfeasibility: { message: string } | null;
+  /**
+   * Motivo pelo qual TODAS as divisões candidatas foram EXCLUÍDAS por não
+   * cumprir a distribuição equilibrada de veteranos (nem com o checkbox
+   * "Desconsiderar veteranos" — se ligado, esta regra nem é checada, então
+   * nunca é a causa) — null quando não houve exclusão por esse motivo. É um
+   * TERCEIRO conceito de invalidez, distinto de `feasibility` (posição) e do
+   * motivo de `benchInfeasibility` (rotação do banco por jogo): este é sobre
+   * a composição do ELENCO de cada time, verificada uma vez por divisão, sem
+   * envolver o rodízio de jogos.
+   */
+  veteranInfeasibility: { message: string } | null;
+  /**
+   * Motivo pelo qual TODAS as divisões candidatas foram EXCLUÍDAS por não
+   * cumprir a distribuição equilibrada de ATRASADOS (`lateArrivalDistributionBroken`)
+   * — null quando não houve exclusão por esse motivo. É um QUARTO conceito de
+   * invalidez, distinto dos outros três (`feasibility`/posição,
+   * `benchInfeasibility`/rotação do banco por jogo — que TAMBÉM cobre o caso
+   * de faltar gente pra fechar a linha por causa de atrasados ainda ausentes,
+   * ver `lineShortfall` — e `veteranInfeasibility`/composição de veteranos):
+   * este é sobre a composição do ELENCO quanto a QUEM ESTÁ MARCADO COMO
+   * ATRASADO, verificada uma vez por divisão, sem envolver o rodízio de jogos.
+   */
+  lateArrivalInfeasibility: { message: string } | null;
 }
 
 /** Último relatório de execução (candidatos avaliados, tempo, factibilidade) — Fase 6/5. */
@@ -523,10 +780,29 @@ const BENCH_MSG_BIG_ROSTER_THRESHOLD = 17;
  * nomeia os NÚMEROS REAIS da simulação (nº de jogadores de linha disponíveis
  * e vagas de banco por rodada num time concreto que travou) e ordena as
  * saídas sugeridas pela mais provável de resolver.
+ *
+ * Quando a causa foi `lineShortfall` (atrasados ainda ausentes deixaram gente
+ * de menos pra fechar os 6 de linha numa rodada — ver rotation.ts), usa um
+ * texto PRÓPRIO que cita a rodada e os números daquela falta específica, em
+ * vez do texto genérico da regra estrita do banco (a causa é outra).
  */
 const benchInfeasibilityMessage = (
-  teamName: string, n: number, b: number, numTeams: number, activeCount: number, allowTwoConsecutiveBench: boolean,
+  issue: { teamName: string; n: number; b: number; lineShortfall: { round: number; available: number; needed: number } | null },
+  numTeams: number, activeCount: number, allowTwoConsecutiveBench: boolean,
 ): string => {
+  if (issue.lineShortfall) {
+    const { round, available, needed } = issue.lineShortfall;
+    const cause =
+      `no ${issue.teamName}, no jogo ${round + 1} do rodízio só há ${available} jogador(es) disponível(is) ` +
+      `(contando quem já chegou) para os ${needed} de linha — os atrasados marcados ainda não entraram nessa rodada.`;
+    const options = [
+      'reduza a quantidade de jogos de ausência de algum atrasado',
+      'marque menos jogadores como atrasados',
+      'ative mais jogadores de linha',
+    ];
+    return `Nenhuma divisão consegue montar os 6 de linha em todas as rodadas: ${cause} Saídas: ${joinNames(options)}.`;
+  }
+  const { teamName, n, b } = issue;
   const need = 2 * b;
   const cause =
     `no ${teamName} há ${n} jogador(es) de linha disponível(is) para ${b} vaga(s) de banco por rodada — ` +
@@ -558,12 +834,21 @@ export const balanceTeamsOptions = (
   const separate = options.separatePairs ?? [];
   const maxOptions = options.maxOptions ?? 6;
   const allowTwoConsecutiveBench = options.allowTwoConsecutiveBench ?? false;
+  const ignoreVeteranDistribution = options.ignoreVeteranDistribution ?? false;
   const active = players.filter((p) => p.active);
+
+  // Rodízio da simulação (9 com 2 times, 6 com 3+) — usado tanto pro custo
+  // quanto pra GRAMPEAR a config de atrasados (ver `clampLateArrivals`).
+  const totalGamesForRun = gamesForTeamCount(numTeams);
+  const lateArrivalsMap = clampLateArrivals(options.lateArrivals, totalGamesForRun);
 
   // Fase 5: checagem de factibilidade ANTES de tentar montar os times.
   const feasibility = checkPositionFeasibility(active, numTeams);
   if (!feasibility.feasible) {
-    lastRunReport = { feasibility, candidatesEvaluated: 0, elapsedMs: 0, benchInfeasibility: null };
+    lastRunReport = {
+      feasibility, candidatesEvaluated: 0, elapsedMs: 0,
+      benchInfeasibility: null, veteranInfeasibility: null, lateArrivalInfeasibility: null,
+    };
     return [];
   }
 
@@ -600,7 +885,7 @@ export const balanceTeamsOptions = (
       lastRunReport = {
         feasibility, candidatesEvaluated: 0,
         elapsedMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0,
-        benchInfeasibility: null,
+        benchInfeasibility: null, veteranInfeasibility: null, lateArrivalInfeasibility: null,
       };
       return [];
     }
@@ -609,25 +894,57 @@ export const balanceTeamsOptions = (
 
   // Custo + checagem da regra do banco (Fase 6+, NOVA REGRA): uma divisão cuja
   // rotação de banco não cumpre "ninguém repete" (nem com a exceção, se
-  // ligada) é EXCLUÍDA aqui — antes mesmo de virar semente pra busca local.
-  // `benchRuleBroken` é invariante a trocas de jogadores de LINHA entre times
-  // (busca local só troca identidade, nunca o TAMANHO de linha/banco/goleiro
-  // de cada time) — por isso é seguro e mais barato decidir isso JÁ na
-  // pontuação inicial, sem precisar recalcular depois da busca local.
-  interface BenchIssue { teamName: string; n: number; b: number }
+  // ligada) — o que TAMBÉM cobre faltar gente pra fechar a linha por causa de
+  // atrasados ainda ausentes (`lineShortfall`, ver rotation.ts) — é EXCLUÍDA
+  // aqui, antes mesmo de virar semente pra busca local. `benchRuleBroken` é
+  // invariante a trocas de jogadores de LINHA entre times (busca local só
+  // troca identidade, nunca o TAMANHO de linha/banco/goleiro de cada time) —
+  // por isso é seguro e mais barato decidir isso JÁ na pontuação inicial, sem
+  // precisar recalcular depois da busca local.
+  interface BenchIssue { teamName: string; n: number; b: number; lineShortfall: TeamMetrics['lineShortfall'] }
   let firstBenchIssue: BenchIssue | null = null;
+  // Distribuição de veteranos (regra própria — ver `veteranDistributionBroken`
+  // acima): checada na COMPOSIÇÃO DO TIME (o `DivTeam` já montado), nunca
+  // dentro do rodízio de jogos. `totalVeterans` é igual em toda divisão (é
+  // sempre o elenco ATIVO inteiro sendo repartido), então guardar o valor da
+  // PRIMEIRA divisão que falhar já basta pra mensagem final.
+  let firstVeteranIssue: number | null = null;
+  // Distribuição de ATRASADOS (regra própria — ver `lateArrivalDistributionBroken`
+  // acima): MESMA arquitetura da de veteranos, checada JUNTO (antes do custo
+  // e da rotação de banco) — sem checkbox de escape.
+  let firstLateArrivalIssue: number | null = null;
   const feasibleDivisions: { teams: DivTeam[]; cost: number }[] = [];
   for (const teams of divisions) {
+    if (!ignoreVeteranDistribution && veteranDistributionBroken(teams)) {
+      if (firstVeteranIssue === null) {
+        firstVeteranIssue = effectiveVeteranCount(teams);
+      }
+      continue; // divisão excluída: concentra veteranos demais num time
+    }
+    if (lateArrivalsMap.size > 0 && lateArrivalDistributionBroken(teams, lateArrivalsMap)) {
+      if (firstLateArrivalIssue === null) {
+        firstLateArrivalIssue = teams.reduce((s, t) => s + lateArrivalsOf(t, lateArrivalsMap).length, 0);
+      }
+      continue; // divisão excluída: concentra atrasados demais num time
+    }
     const games = gamesForTeamCount(teams.length);
-    const metrics = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, games));
+    const metrics = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, games, lateArrivalsMap));
     const brokenIdx = metrics.findIndex((m) => m.benchRuleBroken);
     if (brokenIdx !== -1) {
       if (firstBenchIssue === null) {
-        firstBenchIssue = { teamName: teams[brokenIdx].name, n: metrics[brokenIdx].benchOutfielders, b: metrics[brokenIdx].benchSlots };
+        // `teamName` aqui já é o RÓTULO DE EXIBIÇÃO (não o nome interno) — só é
+        // usado pra compor a mensagem mostrada ao usuário (`benchInfeasibilityMessage`
+        // abaixo); a lógica de balanceamento nunca lê `BenchIssue.teamName`.
+        firstBenchIssue = {
+          teamName: teamDisplayLabel(teams[brokenIdx]),
+          n: metrics[brokenIdx].benchOutfielders,
+          b: metrics[brokenIdx].benchSlots,
+          lineShortfall: metrics[brokenIdx].lineShortfall,
+        };
       }
-      continue; // divisão excluída: não cumpre a regra do banco (nem com a exceção, se ligada)
+      continue; // divisão excluída: não cumpre a regra do banco (nem com a exceção, se ligada) ou não fecha a linha por atraso
     }
-    const cost = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache);
+    const cost = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivalsMap);
     feasibleDivisions.push({ teams, cost });
   }
   const scored = feasibleDivisions.sort((a, b) => a.cost - b.cost);
@@ -646,19 +963,42 @@ export const balanceTeamsOptions = (
   const out: BalanceResult[] = [];
   const postSeen = new Set<string>();
   for (const teams of seeds) {
-    localSearch(teams, neverGk, allowTwoConsecutiveBench, separate, cache);
+    localSearch(teams, neverGk, allowTwoConsecutiveBench, separate, !ignoreVeteranDistribution, cache, 60, lateArrivalsMap);
+    // Cinto e suspensório: `localSearch` já nunca troca pra um estado que
+    // viole a distribuição de veteranos/atrasados (ver comentário lá), mas
+    // revalida aqui antes de publicar o resultado — mais barato que um bug
+    // silencioso fazendo uma divisão inválida escapar pra UI.
+    if (!ignoreVeteranDistribution && veteranDistributionBroken(teams)) continue;
+    if (lateArrivalsMap.size > 0 && lateArrivalDistributionBroken(teams, lateArrivalsMap)) continue;
     const sig = membershipSig(teams);
     if (postSeen.has(sig)) continue;
     postSeen.add(sig);
-    out.push(finalize(teams, neverGk, allowTwoConsecutiveBench, separate, cache));
+    out.push(finalize(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivalsMap));
   }
 
   const elapsedMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
   const issue: BenchIssue | null = firstBenchIssue;
-  const benchInfeasibility = out.length === 0 && issue !== null
-    ? { message: benchInfeasibilityMessage(issue.teamName, issue.n, issue.b, numTeams, active.length, allowTwoConsecutiveBench) }
+  // As três causas de exclusão total são checadas na mesma ordem do filtro
+  // acima (veterano, depois atrasado, depois banco/linha) — nunca mais de uma
+  // ao mesmo tempo no relatório: se sobrou alguma divisão que passou pelos
+  // dois primeiros filtros mas travou no do banco, `firstVeteranIssue`/
+  // `firstLateArrivalIssue` podem estar preenchidos de OUTRAS divisões só
+  // descartadas por eles, mas `out` só fica vazio se TODAS travarem em algum
+  // dos três filtros — a mensagem reporta a causa que aparece primeiro na
+  // varredura.
+  const veteranInfeasibility = out.length === 0 && firstVeteranIssue !== null
+    ? { message: veteranInfeasibilityMessage(firstVeteranIssue, numTeams) }
     : null;
-  lastRunReport = { feasibility, candidatesEvaluated: divisions.length, elapsedMs, benchInfeasibility };
+  const lateArrivalInfeasibility = out.length === 0 && veteranInfeasibility === null && firstLateArrivalIssue !== null
+    ? { message: lateArrivalInfeasibilityMessage(firstLateArrivalIssue, numTeams) }
+    : null;
+  const benchInfeasibility = out.length === 0 && veteranInfeasibility === null && lateArrivalInfeasibility === null && issue !== null
+    ? { message: benchInfeasibilityMessage(issue, numTeams, active.length, allowTwoConsecutiveBench) }
+    : null;
+  lastRunReport = {
+    feasibility, candidatesEvaluated: divisions.length, elapsedMs,
+    benchInfeasibility, veteranInfeasibility, lateArrivalInfeasibility,
+  };
   return out.sort((a, b) => a.cost - b.cost);
 };
 
@@ -671,8 +1011,9 @@ export const balanceTeams = (
 
 const finalize = (
   teams: DivTeam[], neverGk: boolean, allowTwoConsecutiveBench: boolean, separate: [string, string][], cache?: FormationCache,
+  lateArrivals?: ReadonlyMap<string, number>,
 ): BalanceResult => {
-  const built = teams.map((t) => buildBalancedTeam(t, neverGk, allowTwoConsecutiveBench, cache, gamesForTeamCount(teams.length)));
+  const built = teams.map((t) => buildBalancedTeam(t, neverGk, allowTwoConsecutiveBench, cache, gamesForTeamCount(teams.length), lateArrivals));
   const gap = (sel: (b: BalancedTeam) => number): number => {
     const vals = built.map(sel);
     return round(Math.max(...vals) - Math.min(...vals));
@@ -684,13 +1025,13 @@ const finalize = (
   const separationViolations = separate
     .filter(([a, b]) => { const ta = teamOf.get(a); const tb = teamOf.get(b); return ta != null && tb != null && ta === tb; })
     .map(([a, b]) => `${nameOf.get(a) ?? a} & ${nameOf.get(b) ?? b}`);
-  const allMetrics = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, gamesForTeamCount(teams.length)));
+  const allMetrics = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, gamesForTeamCount(teams.length), lateArrivals));
   const goalkeeperWarnings = allMetrics
     .map((m) => m.goalkeeperWarning)
     .filter((w): w is string => !!w);
   return {
     teams: built,
-    cost: round(divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache) * 100) / 100,
+    cost: round(divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivals) * 100) / 100,
     gaps: {
       def: gap((b) => b.metrics.def),
       off: gap((b) => b.metrics.off),

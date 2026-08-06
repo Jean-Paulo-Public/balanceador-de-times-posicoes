@@ -55,6 +55,16 @@ export function WikiTab() {
             de bola do adversário no campo dele. Um jogador pode ser ótimo voltando pra marcar (RCD alto) e fraco
             pressionando lá na frente (INT baixo), ou o contrário — por isso são dois números, não um só.
           </p>
+          <p style={{ fontSize: '0.88rem', lineHeight: 1.5, marginTop: 12 }}>
+            <strong>Recomposição e Marcação: peso IGUAL no eixo defensivo.</strong> No balanceador, a defesa do time é
+            um <strong>PRODUTO, não uma soma</strong>: a defesa de um time é calculada como a raiz da média dos 2 melhores
+            marcadores, multiplicada pela raiz da média da recomposição de todos os 6 de linha — e o resultado entra no
+            cálculo geral junto com a nota do goleiro. Isso significa que marcar bem SEM voltar pra recompor deixa o time
+            frágil — não dá pra compensar uma coisa com a outra. Recentemente marcação e recomposição passaram a pesar
+            IGUAL nessa conta (foi aumentado o peso relativo da recomposição). Antes, um time que marcava muito bem conseguia
+            disfarçar um pouco a recomposição fraca; agora, uma recomposição baixa (ou muito desigual entre os jogadores)
+            derruba a defesa muito mais.
+          </p>
         </Section>
 
         <Section title="Os 6 números exibidos (OVR · OFE · RCD · INT · DEF · GOL)">
@@ -109,12 +119,17 @@ export function WikiTab() {
               </p>
             </div>
             <div>
-              <strong>DEF — Defensivo (perfil individual)</strong>
+              <strong>DEF — Defensivo SEM recomposição (perfil individual)</strong>
               <p style={{ margin: '2px 0 0', fontSize: '0.88rem', lineHeight: 1.5 }}>
-                Quão sólido ele é na defesa em si: marcação, desarme, antecipação, posicionamento. Diferente do RCD
-                (que é sobre voltar e se sacrificar no recuo), o DEF é sobre a qualidade da marcação quando ele já
-                está lá — mas, assim como o OFE, é uma leitura individual. O balanceador olha os 2 melhores marcadores
-                do time (mais o goleiro escalado), não a média de DEF de todo mundo.
+                Quão sólido ele é na defesa em si: marcação, desarme, antecipação, posicionamento — <strong>tirando o
+                "volta pra marcar"</strong>, que é o RCD. A recomposição já tem chip próprio ao lado, então contá-la
+                também dentro do DEF mostrava o mesmo sinal duas vezes. Agora são dois números independentes: DEF responde
+                "o quanto ele marca (quando já está lá)", RCD responde "o quanto ele volta". Um jogador com todos os
+                atributos iguais continua com o mesmo DEF de antes — tirar da conta um atributo que vale exatamente a
+                média não muda a média. Quem se mexe é quem tem a recomposição descolada do próprio nível defensivo
+                (ex.: quem compensava marcação fraca com recomposição alta agora aparece mais baixo no DEF). Como OFE, é
+                uma leitura individual — o balanceador olha os 2 melhores marcadores do time (mais o goleiro escalado),
+                não a média de DEF de todo mundo.
               </p>
             </div>
             <div>
@@ -191,6 +206,83 @@ export function WikiTab() {
             goleiro do time — o sistema busca o primeiro não-atacante da fila e coloca ele pra abrir o rodízio, sem
             bagunçar a ordem dos demais. Se por azar TODOS os goleiros aptos do time forem atacantes, o app avisa
             isso explicitamente em vez de simplesmente escalar um deles sem dizer nada.
+          </p>
+        </Section>
+
+        <Section title="Veterano (distribuição igual entre os times)">
+          <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            No cadastro de cada jogador existe o checkbox <strong>"Veterano"</strong> — marca os mais velhos do
+            racha. É só uma marcação manual, não muda nenhum atributo nem nota do jogador: serve unicamente para o
+            balanceador saber quem entra na conta da distribuição.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            A regra é <strong>espalhar os veteranos igualmente entre os times</strong>. Com veteranos ativos
+            sobrando de forma que não dá pra dividir exato, alguns times ficam com um veterano a mais que os
+            outros — nunca um time cheio de veteranos enquanto outro fica sem nenhum. Ex.: 3 veteranos em 2 times
+            vira 2 e 1 (nunca 3 e 0); 5 veteranos em 2 times vira 3 e 2. Uma divisão que concentra veteranos demais
+            num só time é <strong>excluída das opções</strong>, do mesmo jeito que acontece com a regra do banco —
+            se, mesmo assim, nenhuma divisão sobrar, a simulação é bloqueada e o app explica com os números daquele
+            elenco (quantos veteranos ativos, quantos times, a divisão exigida).
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Importante: a conta é feita <strong>na formação dos times</strong> (o elenco completo de cada time —
+            goleiro reservado, os 6 de linha e o banco), <strong>não jogo a jogo</strong>. O rodízio de banco pode,
+            numa rodada específica, deixar temporariamente mais veteranos de um time em campo do que do outro (por
+            causa de quem sentou naquela rodada) sem que isso invalide nada — o que precisa estar espalhado é o
+            elenco todo, não quem está em campo a cada jogo.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Exceção do veterano PIVÔ.</strong> Vale <strong>só</strong> para quem está cadastrado
+            <strong> exclusivamente como Pivô</strong> — nenhuma outra posição habilitada na lista, e não marcado
+            como coringa. Quem tem Pivô <em>e</em> qualquer outra posição habilitada NÃO entra nessa exceção: conta
+            como veterano normal. O caso que isso resolve é o do pessoal que joga de segundo atacante ou
+            meia-atacante e só quebra um galho no pivô, então acaba cadastrado apenas como Pivô.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Esse veterano só entra na conta da distribuição quando o total de veteranos é <strong>menor ou igual à
+            quantidade de times</strong>, ou <strong>múltiplo da quantidade de times</strong>. Nesses dois casos a
+            divisão já sai limpa sozinha (no máximo um veterano por time, ou exatamente a mesma quantidade em cada),
+            então não há motivo pra tratar ninguém de forma especial. Fora desses casos, sobra veterano — algum time
+            teria que levar um a mais — e aí o veterano-pivô sai da conta, porque <strong>o time dele é quem aguenta
+            o extra</strong>: pivô fica plantado na área e não corre o campo inteiro.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Na prática, com 3 veteranos em 2 times (um deles pivô): os <strong>dois que correm</strong> ficam um em
+            cada time, e o pivô acompanha um deles. O que nunca acontece é os dois que correm caírem no mesmo time
+            enquanto o outro fica só com o pivô. Já com 4 veteranos em 2 times, 4 é múltiplo de 2, então todos
+            contam e a divisão é 2 e 2.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            A exceção vale <strong>por jogador</strong>, então se houver mais de um veterano exclusivamente-pivô cada
+            um deles é retirado da conta — e a conta não quebra, porque eles já ficam separados de qualquer forma:
+            existe <strong>uma única vaga de Pivô por time</strong> em todos os sistemas táticos, então dois pivôs
+            nunca caem no mesmo time.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Escape: "Desconsiderar veteranos"</strong> (checkbox na tela de Simular Partidas, desmarcado por
+            padrão e que NÃO fica salvo — some quando você reabre o app). Quando marcado, a distribuição de
+            veteranos deixa de valer por completo: nenhuma divisão é excluída por causa disso.
+          </p>
+        </Section>
+
+        <Section title="Não jogará os primeiros jogos (atrasados)">
+          <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Na tela de Simular Partidas, logo abaixo de "Manter separados", existe o filtro <strong>"Não jogará os primeiros jogos"</strong> — serve para marcar quem chega atrasado no dia (saiu do trabalho, trânsito, qualquer coisa).
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Você escolhe um jogador e quantos jogos ele vai <strong>ficar completamente ausente</strong> no início da pelada (entre 1 e o máximo de jogos da rodada menos 1 — com rodízio de 6 jogos, o máximo é 5 jogos de ausência; com 2 times a rodada tem 9 jogos, então o máximo é 8). Depois dele "entrar" (depois desses jogos passarem), ele volta ao rodízio normal.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Atenção: ele está AUSENTE, não está no banco.</strong> Enquanto durar a ausência, ele não aparece em nenhum lugar — nem como reserva, nem na contagem de banco. É como se ele não estivesse relacionado naqueles jogos. Quando chega, o app marca isso com uma indicação própria (a forma como aparece é diferente de "entrou do banco"). Depois que chega, ele entra no rodízio de banco normal, como qualquer outro.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>A ausência não conta na justiça do banco.</strong> Aqueles jogos em que ele não estava não entram na contagem de quantas vezes ele foi pro banco — ele não "deve" nada por eles. A regra de ninguém ficar dois jogos seguidos no banco não o afeta enquanto está ausente (ele não está em campo, então não há nada a "cumprir" naquele jogo).
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Distribuição igualitária entre os times.</strong> Se o time A tem Fulano atrasado e o time B não tem ninguém, a simulação não sai balanceada — o balanceador trata isso com a mesma seriedade que a distribuição de veteranos. Os atrasados são espalhados entre os times da forma mais uniforme possível: com 3 atrasados em 2 times, um time fica com 2 e o outro com 1; com 4 atrasados em 2 times, fica 2 e 2. Se nenhuma divisão conseguir fazer isso sem concentrar atrasados demais num só time, a simulação é bloqueada e o app explica o problema.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Bloqueio se faltar gente pra fechar a rodada.</strong> Se o time ficar tão desfalcado numa rodada (ainda com atrasados ausentes) que não consiga arrumar 6 jogadores de linha, o app avisa explicitamente qual é a rodada e por que não dá (p. ex., "no Time A, no jogo 3 do rodízio só há 5 jogadores disponíveis para os 6 de linha"). Isso torna a divisão inviável — nenhuma mudança no rodízio ou banco vai resolver, e o app descarta essa opção. As saídas são: reduzir a quantidade de jogos de ausência de alguém, marcar menos jogadores como atrasados, ou ativar mais jogadores de linha.
           </p>
         </Section>
 

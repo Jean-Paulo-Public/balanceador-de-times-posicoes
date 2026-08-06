@@ -32,6 +32,7 @@ interface RawPlayer {
   acceptedPositions?: unknown;
   positionOverrides?: unknown;
   positionOrderIndifferent?: unknown;
+  veteran?: unknown;
 }
 
 const isValidPositionValue = (v: unknown): v is PositionPreference =>
@@ -114,6 +115,16 @@ export const parsePositionOrderIndifferent = (x: unknown): boolean | undefined =
   typeof x === 'boolean' ? x : undefined;
 
 /**
+ * `veteran` bruto: campo COSMÉTICO/opcional, EXATAMENTE o mesmo padrão de
+ * `parsePositionOrderIndifferent` — NÃO segue a regra estrita de
+ * `attributes`/`gk`/`acceptedPositions` (tipo errado nunca descarta o
+ * jogador, só omite o campo). Aceita apenas `boolean`; qualquer outro tipo
+ * devolve `undefined` — campo ausente/`false`.
+ */
+export const parseVeteran = (x: unknown): boolean | undefined =>
+  typeof x === 'boolean' ? x : undefined;
+
+/**
  * Valida um `positionOverrides` bruto (modelo v3.1 — exceções de atributo por
  * posição de linha): mapa ESPARSO posição → atributos parciais. DESCARTA
  * entradas malformadas em vez de invalidar o mapa inteiro:
@@ -193,6 +204,8 @@ export const normalizePlayer = (raw: RawPlayer | Player | null | undefined): Pla
   if (positionOverrides !== undefined) player.positionOverrides = positionOverrides;
   const positionOrderIndifferent = parsePositionOrderIndifferent(r.positionOrderIndifferent);
   if (positionOrderIndifferent !== undefined) player.positionOrderIndifferent = positionOrderIndifferent;
+  const veteran = parseVeteran(r.veteran);
+  if (veteran !== undefined) player.veteran = veteran;
   return player;
 };
 

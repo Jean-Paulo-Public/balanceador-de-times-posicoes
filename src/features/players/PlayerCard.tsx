@@ -48,6 +48,7 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
         <div className={styles.metaRow}>
           <span className={`chip ${visual.chip}`}>{visual.icon} {posToLabel(player.position)}</span>
           {isPivot(player) && <span className="chip chip-accent">Pivô</span>}
+          {player.veteran && <span className="chip chip-info" title="Veterano — um dos mais velhos do racha">Veterano</span>}
         </div>
 
         <div className={styles.positionsRow}>

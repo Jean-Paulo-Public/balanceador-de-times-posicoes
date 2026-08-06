@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePlayer, normalizePlayers, parseAttrVector, parseAcceptedPositions, parsePositionOrderIndifferent } from './migration';
+import { normalizePlayer, normalizePlayers, parseAttrVector, parseAcceptedPositions, parsePositionOrderIndifferent, parseVeteran } from './migration';
 import { emptyAttrs } from '../domain/attributes';
 
 const VALID_ATTRS = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 48, MOV: 45, FIS: 58 };
@@ -265,5 +265,40 @@ describe('normalizePlayer — positionOrderIndifferent (opcional/cosmético, NÃ
     const p = normalizePlayer({ name: 'SemFlag', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS });
     expect(p).not.toBeNull();
     expect(p!.positionOrderIndifferent).toBeUndefined();
+  });
+});
+
+describe('normalizePlayer — veteran (opcional/cosmético, mesmo padrão de positionOrderIndifferent)', () => {
+  it('parseVeteran aceita true/false e ignora qualquer outro tipo', () => {
+    expect(parseVeteran(true)).toBe(true);
+    expect(parseVeteran(false)).toBe(false);
+    expect(parseVeteran('true')).toBeUndefined();
+    expect(parseVeteran(1)).toBeUndefined();
+    expect(parseVeteran(null)).toBeUndefined();
+    expect(parseVeteran(undefined)).toBeUndefined();
+    expect(parseVeteran({})).toBeUndefined();
+  });
+
+  it('normalizePlayer grava veteran quando é boolean', () => {
+    const p = normalizePlayer({
+      name: 'Veterano', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, veteran: true,
+    });
+    expect(p!.veteran).toBe(true);
+  });
+
+  it('tipo inválido só OMITE o campo — nunca descarta o jogador', () => {
+    const p = normalizePlayer({
+      name: 'VeteranoInvalido', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, veteran: 'sim',
+    });
+    expect(p).not.toBeNull();
+    expect(p!.veteran).toBeUndefined();
+  });
+
+  it('campo ausente não aparece no jogador normalizado', () => {
+    const p = normalizePlayer({ name: 'SemVeteran', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS });
+    expect(p).not.toBeNull();
+    expect(p!.veteran).toBeUndefined();
   });
 });

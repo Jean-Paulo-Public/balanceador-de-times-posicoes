@@ -4,7 +4,7 @@ import type { BalancedTeam, BalancedSlot } from './balance';
 import type { AttrVector } from '../domain/attributes';
 import { clampAttr } from '../domain/attributes';
 import { BOX_TO_BOX, allEnabled, type LinePosition } from '../domain/positions';
-import { buildTeamSchedule, applyGame1GoalkeeperRule, gamesForTeamCount } from './rotation';
+import { buildTeamSchedule, applyGame1GoalkeeperRule, gamesForTeamCount, clampLateArrivals } from './rotation';
 
 /** Vetor UNIFORME (0–100): fixture direta de atributos, sem estrela nem derivação. */
 const flatAttrs = (overall: number): AttrVector => {
@@ -249,6 +249,128 @@ describe('gamesForTeamCount (9 jogos só com 2 times)', () => {
     const counts = new Map<string, number>();
     for (const g of sch.games) for (const n of g.benchNames) counts.set(n, (counts.get(n) ?? 0) + 1);
     expect(Math.max(...counts.values()) - Math.min(...counts.values())).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('clampLateArrivals', () => {
+  it('sem entradas = mapa vazio', () => {
+    expect(clampLateArrivals(undefined, 6).size).toBe(0);
+    expect(clampLateArrivals([], 6).size).toBe(0);
+  });
+
+  it('rejeita games não-inteiro e < 1', () => {
+    const m = clampLateArrivals(
+      [
+        { playerId: 'a', games: 2.5 },
+        { playerId: 'b', games: 0 },
+        { playerId: 'c', games: -1 },
+        { playerId: 'd', games: 2 },
+      ],
+      6,
+    );
+    expect(m.has('a')).toBe(false);
+    expect(m.has('b')).toBe(false);
+    expect(m.has('c')).toBe(false);
+    expect(m.get('d')).toBe(2);
+  });
+
+  it('limita a totalGames - 1 (nunca zera o jogador da pelada inteira em silêncio)', () => {
+    const m = clampLateArrivals([{ playerId: 'a', games: 100 }], 6);
+    expect(m.get('a')).toBe(5);
+  });
+
+  it('com totalGames=1, o clamp zera o valor e a entrada é descartada (0 não é ausência válida)', () => {
+    const m = clampLateArrivals([{ playerId: 'a', games: 3 }], 1);
+    expect(m.has('a')).toBe(false);
+  });
+
+  it('valor dentro do limite passa intacto', () => {
+    const m = clampLateArrivals([{ playerId: 'a', games: 3 }], 6);
+    expect(m.get('a')).toBe(3);
+  });
+});
+
+describe('buildTeamSchedule + atrasados (LateArrival) — não é banco, é ausência', () => {
+  const buildLateRoster = () => {
+    const line = [
+      P('L1', 'MEIA', 80), P('L2', 'MEIA', 60), P('L3', 'MEIA', 60),
+      P('L4', 'DEFENSOR', 80), P('L5', 'DEFENSOR', 60), P('L6', 'ATACANTE', 60),
+    ];
+    const bench = [P('B1', 'MEIA', 60), P('B2', 'ATACANTE', 60), P('B3', 'DEFENSOR', 60)];
+    return { line, bench };
+  };
+
+  it('atrasado NÃO é escalado nas N primeiras rodadas e ENTRA exatamente na rodada N+1 (`arrivals`)', () => {
+    const { line, bench } = buildLateRoster();
+    const lateArrivals = new Map([[bench[0].id, 2]]); // B1 ausente nos jogos 1 e 2, entra no jogo 3
+    const sch = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench }),
+      6, undefined, false, lateArrivals,
+    );
+    expect(sch.games[0].arrivals).toEqual([]);
+    expect(sch.games[1].arrivals).toEqual([]);
+    expect(sch.games[2].arrivals).toEqual(['B1']);
+    expect(sch.games.slice(3).every((g) => g.arrivals.length === 0)).toBe(true);
+    // Nunca escalado (linha nem banco) enquanto ausente.
+    expect(sch.games[0].slots.some((s) => s.player.name === 'B1')).toBe(false);
+    expect(sch.games[1].slots.some((s) => s.player.name === 'B1')).toBe(false);
+    expect(sch.games[0].benchNames).not.toContain('B1');
+    expect(sch.games[1].benchNames).not.toContain('B1');
+  });
+
+  it('nas rodadas de ausência, o nome dele NÃO está em `benchNames` (contagem acumulada de banco continua ZERO)', () => {
+    const { line, bench } = buildLateRoster();
+    const lateArrivals = new Map([[bench[0].id, 2]]);
+    const sch = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench }),
+      6, undefined, false, lateArrivals,
+    );
+    const benchAppearancesWhileAbsent = sch.games.slice(0, 2).filter((g) => g.benchNames.includes('B1')).length;
+    expect(benchAppearancesWhileAbsent).toBe(0);
+  });
+
+  it('a ausência do atrasado NÃO dispara a regra estrita do banco — a divisão continua válida', () => {
+    const { line, bench } = buildLateRoster();
+    const lateArrivals = new Map([[bench[0].id, 2]]);
+    const sch = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench }),
+      6, undefined, false, lateArrivals,
+    );
+    expect(sch.benchRuleBroken).toBe(false);
+    expect(sch.lineShortfall).toBeNull();
+  });
+
+  it('depois de entrar, a regra do banco (ninguém repete 2 rodadas seguidas) passa a valer normalmente pra ele', () => {
+    const { line, bench } = buildLateRoster();
+    const lateArrivals = new Map([[bench[0].id, 2]]);
+    const sch = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench }),
+      6, undefined, false, lateArrivals,
+    );
+    // A partir da rodada de chegada (índice 2), a regra estrita se aplica a
+    // TODO MUNDO, inclusive quem chegou — nunca repete banco em rodadas seguidas.
+    for (let i = 3; i < sch.games.length; i++) {
+      const prevBench = new Set(sch.games[i - 1].benchNames);
+      for (const name of sch.games[i].benchNames) expect(prevBench.has(name)).toBe(false);
+    }
+    // E ele de fato entra no rodízio normal de banco em algum momento depois de chegar
+    // (não fica isento pra sempre uma vez que chega).
+    const benchedAfterArrival = sch.games.slice(2).some((g) => g.benchNames.includes('B1'));
+    expect(benchedAfterArrival).toBe(true);
+  });
+
+  it('um time SEM atrasados produz exatamente o mesmo resultado de antes (sem regressão)', () => {
+    const { line, bench } = buildLateRoster();
+    const withoutMap = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench }),
+      6,
+    );
+    const withEmptyMap = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench }),
+      6, undefined, false, new Map(),
+    );
+    expect(withEmptyMap.games.map((g) => g.benchNames)).toEqual(withoutMap.games.map((g) => g.benchNames));
+    expect(withEmptyMap.games.every((g) => g.arrivals.length === 0)).toBe(true);
   });
 });
 

@@ -4,7 +4,11 @@
 //
 // Mapeamento pras chaves contextuais escolhidas de OVR_WEIGHTS:
 //  - Ofensivo      -> 'Ataque' (pesa FIN/CRI/DRI/MOV — o que ele produz com bola).
-//  - Defensivo     -> 'Defesa' (pesa DEF/RCD/FIS — solidez pura de marcação).
+//  - Defensivo     -> 'Defesa', mas SEM RECOMPOSIÇÃO: o RCD é ZERADO e o
+//    resultado REESCALADO por regra de três (ver `defesaSemRecomposicao`). O
+//    chip responde "quanto ele defende, tirando o voltar pra marcar" — porque a
+//    recomposição já tem chip próprio ao lado e contá-la nos dois mostrava o
+//    mesmo sinal duas vezes.
 // O "OVR de goleiro" NÃO vem de OVR_WEIGHTS: é a nota de goleiro do jogador
 // (`gk`/`effectiveGk`, 0–100), separada dos 9 atributos de linha.
 //
@@ -36,7 +40,7 @@
 // de RCD dos 6, e o eixo `pressao` de custo (src/engine/scoring.ts) é a média
 // de INT dos 6.
 
-import type { AttrVector } from '../../domain/attributes';
+import { OVR_WEIGHTS, type AttrVector } from '../../domain/attributes';
 import { ovr } from '../../engine';
 
 export interface DisplayOvrs {
@@ -56,12 +60,38 @@ export interface DisplayOvrs {
  * são OVRs — são os valores efetivos dos atributos-base RCD e INT, diretos
  * (ver comentário no topo do arquivo).
  */
+/**
+ * OVR de defesa DESCONTANDO a recomposição: zera o RCD e reescala pela fração
+ * de peso que sobrou, devolvendo o número à régua 0–100. Exportado para teste.
+ */
+export const defesaSemRecomposicao = (attrs: AttrVector): number => {
+  const pesoRcd = OVR_WEIGHTS.Defesa.RCD;
+  const restante = 1 - pesoRcd;
+  if (restante <= 0) return 0; // defensivo: só aconteceria se o vetor fosse 100% RCD
+  return ovr({ ...attrs, RCD: 0 }, 'Defesa') / restante;
+};
+
 export const computeDisplayOvrs = (attrs: AttrVector, gk: number | null): DisplayOvrs => ({
   geral: Math.round(ovr(attrs, 'Geral')),
   ofensivo: Math.round(ovr(attrs, 'Ataque')),
   recomposicao: Math.round(attrs.RCD),
   intensidade: Math.round(attrs.INT),
-  defensivo: Math.round(ovr(attrs, 'Defesa')),
+  // O chip DEF mede DEFESA SEM RECOMPOSIÇÃO (pedido do dono): a recomposição já
+  // tem chip PRÓPRIO ao lado, então contá-la aqui também mostrava o mesmo sinal
+  // duas vezes.
+  // COMO: zera o RCD e REESCALA por regra de três — o vetor `Defesa` sem o RCD
+  // só chega a `1 - peso(RCD)` (hoje 0,78), então divide-se por isso pra voltar
+  // à régua 0–100. Divisão, não soma: com peso .22 o fator é 1/0,78 = 1,282
+  // (+28,2%), NÃO +22%.
+  // Por que não zerar o peso de RCD no vetor: isso mudaria o peso RELATIVO de
+  // todos os outros atributos. Reescalar preserva as proporções entre marcação,
+  // físico e o resto exatamente como estão calibradas.
+  // Lê-se o peso do próprio vetor em vez de constante fixa: se o peso de RCD em
+  // `OVR_WEIGHTS.Defesa` mudar, isto acompanha sozinho.
+  // ATENÇÃO: é SÓ EXIBIÇÃO. O eixo defensivo do balanceador
+  // (`estabilidadeDefensiva`, em src/engine/scoring.ts) continua usando o RCD
+  // REAL do jogador — nada aqui muda como os times são montados.
+  defensivo: Math.round(defesaSemRecomposicao(attrs)),
   goleiro: gk == null ? null : Math.round(gk),
 });
 
@@ -93,7 +123,7 @@ export const OVR_DISPLAY_ITEMS: OvrDisplayItem[] = [
   },
   {
     key: 'defensivo', abbr: 'DEF',
-    fullLabel: 'Overall defensivo — perfil INDIVIDUAL do jogador. O balanceador não usa esse número: a defesa do time é calculada à parte (melhores marcadores do time + goleiro), não como média de perfis individuais.',
+    fullLabel: 'Overall defensivo SEM recomposição — quanto ele defende tirando o "volta pra marcar", que já tem o chip RCD ao lado. Perfil INDIVIDUAL: o balanceador não usa esse número (a defesa do time é calculada à parte, com os melhores marcadores + goleiro, e lá a recomposição real CONTA).',
   },
   { key: 'goleiro', abbr: 'GOL', fullLabel: 'Nota de goleiro (só quem joga no gol)' },
 ];

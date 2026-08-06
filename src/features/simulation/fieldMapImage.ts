@@ -4,6 +4,7 @@
 // mostram "Jogo 1 ao 6" e o resto fica preto. Ver Design v2, Seção 13.
 
 import { buildTeamSchedule, gamesForTeamCount, type BalanceResult } from '../../engine';
+import { teamDisplayLabel } from '../../domain';
 
 const ROLE_SHORT: Record<string, string> = {
   FIXO: 'FIX', LATERAL: 'LAT', VOLANTE: 'VOL', ALA: 'ALA',
@@ -63,10 +64,20 @@ const drawField = (
   for (const c of cells) place(c.x, c.y, c.label, ROLE_SHORT[c.role] ?? c.role, false);
 };
 
-export const buildFieldMapsImage = async (result: BalanceResult): Promise<Blob> => {
+export const buildFieldMapsImage = async (
+  result: BalanceResult,
+  /**
+   * Mapa jogador -> nº de jogos de ausência (ver `LateArrival`/`clampLateArrivals`
+   * em engine/rotation.ts), já GRAMPEADO ao rodízio da última simulação — MESMO
+   * mapa usado por `TeamBlock`/WhatsApp em SimulationTab.tsx, senão o PNG
+   * exportado mostraria um rodízio diferente do que foi balanceado (ou, pior,
+   * ignoraria os atrasados por completo e escalaria todo mundo desde o jogo 1).
+   */
+  lateArrivalsMap?: ReadonlyMap<string, number>,
+): Promise<Blob> => {
   const teams = result.teams;
   const totalGames = gamesForTeamCount(teams.length);
-  const schedules = teams.map((t) => buildTeamSchedule(t, totalGames));
+  const schedules = teams.map((t) => buildTeamSchedule(t, totalGames, undefined, undefined, lateArrivalsMap));
   // Só gera uma linha por jogo se ALGUM time varia (banco/goleiros pra revezar).
   // Se ninguém varia, gera 1 linha só ("Jogo 1 ao N") — nada de linhas de
   // células pretas. `totalGames` é 9 com 2 times e 6 com 3+ (nunca fixo em 6,
@@ -99,7 +110,7 @@ export const buildFieldMapsImage = async (result: BalanceResult): Promise<Blob> 
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(truncate(t.name, 24), cx, pad + 16);
+    ctx.fillText(truncate(teamDisplayLabel(t), 24), cx, pad + 16);
     ctx.fillStyle = '#93e6b0';
     ctx.font = '9px sans-serif';
     const benchTxt = t.bench.length ? 'Banco: ' + t.bench.map((b) => b.name.split(' ')[0]).join(', ') : 'Sem banco';
@@ -120,12 +131,20 @@ export const buildFieldMapsImage = async (result: BalanceResult): Promise<Blob> 
       } else {
         game = sch.games[r] ?? null;
         title = 'Jogo ' + (r + 1);
-        if (game && r > 0) {
-          const prev = sch.games[r - 1];
-          const cur = game;
-          const entra = prev.benchNames.filter((nm) => !cur.benchNames.includes(nm)).map(first);
-          const sai = cur.benchNames.filter((nm) => !prev.benchNames.includes(nm)).map(first);
-          if (sai.length || entra.length) subtitle = `Sai: ${sai.join(', ') || '—'}  Entra: ${entra.join(', ') || '—'}`;
+        if (game) {
+          const parts: string[] = [];
+          if (r > 0) {
+            const prev = sch.games[r - 1];
+            const cur = game;
+            const entra = prev.benchNames.filter((nm) => !cur.benchNames.includes(nm)).map(first);
+            const sai = cur.benchNames.filter((nm) => !prev.benchNames.includes(nm)).map(first);
+            if (sai.length || entra.length) parts.push(`Sai: ${sai.join(', ') || '—'}  Entra: ${entra.join(', ') || '—'}`);
+          }
+          // Quem faz sua PRIMEIRA aparição nesta rodada (ver `GameLineup.arrivals`
+          // em rotation.ts) — indicação PRÓPRIA, nunca misturada com "Entra"
+          // (ele não estava em `benchNames` na rodada anterior, veio de fora).
+          if (game.arrivals.length) parts.push(`Chega: ${game.arrivals.map(first).join(', ')}`);
+          if (parts.length) subtitle = parts.join('  ');
         }
       }
       if (!game) {

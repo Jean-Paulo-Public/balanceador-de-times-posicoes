@@ -81,6 +81,7 @@ export const ATTRIBUTE_META: Record<AttributeKey, AttributeMeta> = {
  */
 export const ATTR_PRESETS: { label: string; value: number }[] = [
   { label: 'Nenhum', value: 0 },
+  { label: 'Mínimo', value: 10 },
   { label: 'Muito baixa', value: 20 },
   { label: 'Baixa', value: 35 },
   { label: 'Média', value: 50 },
