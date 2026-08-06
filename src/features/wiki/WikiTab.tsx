@@ -200,12 +200,27 @@ export function WikiTab() {
 
         <Section title="Rodízio de goleiro">
           <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
-            Quando um time tem mais de um goleiro apto, eles revezam o gol jogo a jogo — os melhores primeiro, pra
-            deixar a defesa mais forte logo de cara. A única exceção é o <strong>Jogo 1</strong>: ele nunca começa
-            com um atacante (Pivô, Segundo Atacante ou Meia-Atacante) no gol, mesmo que esse atacante seja o melhor
-            goleiro do time — o sistema busca o primeiro não-atacante da fila e coloca ele pra abrir o rodízio, sem
-            bagunçar a ordem dos demais. Se por azar TODOS os goleiros aptos do time forem atacantes, o app avisa
-            isso explicitamente em vez de simplesmente escalar um deles sem dizer nada.
+            Quando um time tem mais de um goleiro apto, eles revezam o gol — os melhores primeiro, pra deixar a
+            defesa mais forte no início. A fila respeita a ordem: quem vem pra jogar só volta ao gol depois que
+            todos os outros passaram.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>A decisão é JOGO A JOGO (por rodada), não pelo tamanho do elenco.</strong> Um time reveza goleiro
+            próprio numa rodada quando tem <strong>pelo menos 7 jogadores disponíveis</strong> naquela rodada
+            específica (goleiro + 6 de linha + banco). Com 7 ou mais ele tira um goleiro da fila pro gol; com
+            exatamente 6, aquela rodada usa goleiro emprestado do time que está de fora e os 6 vão todos pra linha.
+            Com menos de 6 não dá pra fechar a escalação: aí o app avisa e bloqueia, em vez de montar um time
+            incompleto. O mesmo time pode usar goleiro emprestado nos primeiros jogos e passar a revezar goleiro
+            próprio depois — é o que acontece quando alguém chega atrasado e o time enche na metade da pelada. É
+            esperado, não é bug. Consequência: a nota de goleiro só conta nas rodadas em que há um goleiro do
+            próprio time no gol.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Jogo 1 nunca começa com um atacante no gol:</strong> mesmo que um atacante (Pivô, Segundo
+            Atacante ou Meia-Atacante) seja o melhor goleiro do time, o sistema busca o primeiro não-atacante da
+            fila e coloca ele pra abrir o rodízio, sem bagunçar a ordem dos demais. Se TODOS os goleiros aptos do
+            time forem atacantes, o app avisa isso explicitamente em vez de simplesmente escalar um deles sem dizer
+            nada.
           </p>
         </Section>
 
@@ -277,6 +292,18 @@ export function WikiTab() {
           </p>
           <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
             <strong>A ausência não conta na justiça do banco.</strong> Aqueles jogos em que ele não estava não entram na contagem de quantas vezes ele foi pro banco — ele não "deve" nada por eles. A regra de ninguém ficar dois jogos seguidos no banco não o afeta enquanto está ausente (ele não está em campo, então não há nada a "cumprir" naquele jogo).
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Fim da fila do gol.</strong> Quando chega, o atrasado entra no fim da fila de revezamento de goleiro
+            — não faz sentido a primeira coisa que ele faça ao chegar ser ir pro gol (ele já perdeu jogos de ausência). O mesmo vale se há vários atrasados: quem chegou mais tarde fica ainda mais pro fim da fila.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Fim da fila do banco (entra por último).</strong> Quando chega, o atrasado recebe uma contagem de
+            banco equiparada ao maior valor do time naquele instante — assim a regra normal (senta quem foi menos
+            vezes) empurra as idas dele ao banco pro fim sozinha, sem tratamento especial. Isso não é isenção: se não
+            houver alternativa ele senta mesmo assim; e ao longo da pelada a conta dele não fica muito abaixo da dos
+            outros. O mecanismo evita que ele chegasse com "saldo zero" de banco e virasse o primeiro a sentar — o
+            oposto do desejado.
           </p>
           <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
             <strong>Distribuição igualitária entre os times.</strong> Se o time A tem Fulano atrasado e o time B não tem ninguém, a simulação não sai balanceada — o balanceador trata isso com a mesma seriedade que a distribuição de veteranos. Os atrasados são espalhados entre os times da forma mais uniforme possível: com 3 atrasados em 2 times, um time fica com 2 e o outro com 1; com 4 atrasados em 2 times, fica 2 e 2. Se nenhuma divisão conseguir fazer isso sem concentrar atrasados demais num só time, a simulação é bloqueada e o app explica o problema.

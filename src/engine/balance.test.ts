@@ -4,7 +4,11 @@ import type { AttrVector } from '../domain/attributes';
 import { clampAttr } from '../domain/attributes';
 import { BOX_TO_BOX, allEnabled } from '../domain/positions';
 import { ALL_SYSTEMS } from './formationModel';
-import { balanceTeams, getLastBalanceRunReport, W } from './balance';
+import {
+  balanceTeams, balanceTeamsOptions, getLastBalanceRunReport, resolvePlayer, teamMetrics, W,
+  type DivTeam,
+} from './balance';
+import { buildTeamSchedule, clampLateArrivals, gamesForTeamCount } from './rotation';
 
 /**
  * PRNG determinístico (mulberry32) usado SÓ NESTE ARQUIVO DE TESTE para
@@ -222,5 +226,211 @@ describe('balanceTeams — Fase 6: custo é a média das métricas de 6 jogos', 
     expect(report).not.toBeNull();
     expect(report!.elapsedMs).toBeGreaterThanOrEqual(0);
     expect(report!.candidatesEvaluated).toBeGreaterThan(0);
+  });
+});
+
+// Bug relatado pelo dono (testado por ele localmente): "Ele está revezando
+// goleiro e ficando com 5 na linha." Causa raiz: `fielding` (dentro de
+// `teamMetrics`) bastava alguém apto ao gol EXISTIR pra revezar goleiro
+// PRÓPRIO — sem checar o TAMANHO do elenco. Um time só reveza goleiro do
+// PRÓPRIO elenco com pelo menos 7 jogadores (goleiro reservado + 6 de linha +
+// banco); com 6, os 6 são TODOS de linha e o goleiro vem EMPRESTADO de fora —
+// ver `MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER` em rotation.ts.
+describe('balanceTeams — goleiro próprio só reveza com elenco de 7+ (bug "5 na linha")', () => {
+  // 12 jogadores / 2 times = 6 de linha cada, SEM banco e SEM goleiro
+  // reservado (12 = 2×6 não deixa ninguém pra reservar) — reproduz
+  // exatamente o cenário do bug: cada time tem exatamente 6 no elenco total,
+  // e um deles é apto ao gol.
+  const poolSeisComUmGoleiro = (): Player[] => {
+    idc = 0;
+    return [
+      P('DEFENSOR', 80, { isGoalkeeper: true, gk: 80 }),
+      P('DEFENSOR', 70), P('DEFENSOR', 60), P('DEFENSOR', 90),
+      P('MEIA', 80), P('MEIA', 70), P('MEIA', 60), P('MEIA', 90),
+      P('ATACANTE', 90), P('ATACANTE', 60), P('ATACANTE', 80), P('ATACANTE', 50),
+    ];
+  };
+
+  it('time com 6 no elenco: TODOS os 6 vão pra linha, `fieldsGoalkeeper` é false, e NENHUM jogo tem menos de 6 na linha', () => {
+    const res = balanceTeams(poolSeisComUmGoleiro(), 2)!;
+    expect(res).not.toBeNull();
+    for (const t of res.teams) {
+      // elenco de 6 (6 de linha, sem banco, sem goleiro reservado) — a
+      // condição exata do bug relatado.
+      expect(t.slots.length + t.bench.length + (t.goalkeeper ? 1 : 0)).toBe(6);
+      expect(t.fieldsGoalkeeper).toBe(false);
+      expect(t.metrics.cobertura).toBeNull();
+
+      const sched = buildTeamSchedule(t, gamesForTeamCount(2));
+      expect(sched.benchRuleBroken).toBe(false);
+      for (const g of sched.games) {
+        expect(g.slots.length).toBe(6); // nunca menos de 6 na linha
+        expect(g.benchNames).toHaveLength(0); // sem banco possível com só 6 no elenco
+      }
+    }
+  });
+
+  it('a nota de goleiro NÃO influencia o eixo defensivo do time de 6 (goleiro emprestado não entra na conta)', () => {
+    // `Math.random` SEMEADO (mesmo padrão de "nota de goleiro desacoplada do
+    // resto" acima): sem isso, as duas chamadas de `balanceTeams` poderiam
+    // percorrer amostras de divisões candidatas diferentes e produzir `def`
+    // diferente por um motivo QUE NÃO É a nota de goleiro (mascarando ou
+    // simulando um vazamento que não existe).
+    withSeededRandom();
+    const ruim = balanceTeams(poolSeisComUmGoleiro(), 2)!;
+    const comGoleiroMelhor = poolSeisComUmGoleiro();
+    comGoleiroMelhor[0] = { ...comGoleiroMelhor[0], gk: 5 }; // pior nota de goleiro possível
+    withSeededRandom();
+    const comGoleiroPior = balanceTeams(comGoleiroMelhor, 2)!;
+    // Mesma composição de linha (mesmos atributos de campo) nos dois casos —
+    // só a nota de goleiro mudou, e ela não deveria mexer em `def`.
+    const defsRuim = ruim.teams.map((t) => t.metrics.def).sort((a, b) => a - b);
+    const defsPior = comGoleiroPior.teams.map((t) => t.metrics.def).sort((a, b) => a - b);
+    expect(defsPior).toEqual(defsRuim);
+  });
+});
+
+describe('balanceTeams — elenco de 7 continua revezando goleiro próprio normalmente (sem regressão)', () => {
+  // 14 jogadores / 2 times = 7 cada (6 de linha + 1 goleiro reservado, sem
+  // banco) — MESMO pool usado no resto deste arquivo (`pool()`), que já
+  // cobre esse caso, mas aqui a asserção é ESPECÍFICA sobre o comportamento
+  // que não pode regredir com a correção do bug dos times de 6.
+  it('time com 7 no elenco e goleiro apto: reveza goleiro próprio (fieldsGoalkeeper=true, cobertura calculada)', () => {
+    const res = balanceTeams(pool(), 2)!;
+    for (const t of res.teams) {
+      expect(t.slots.length + t.bench.length + (t.goalkeeper ? 1 : 0)).toBe(7);
+      expect(t.fieldsGoalkeeper).toBe(true);
+      expect(t.metrics.cobertura).not.toBeNull();
+      const sched = buildTeamSchedule(t, gamesForTeamCount(2));
+      for (const g of sched.games) expect(g.slots.length).toBe(6);
+    }
+  });
+});
+
+// Verificação DIRETA (sem passar pela busca de divisões, pra não haver
+// confusão entre "composição de time diferente" e "nota de goleiro
+// diferente"): a nota de goleiro só pode pesar no eixo `def` nas rodadas em
+// que aquele goleiro está de fato ESCALADO NO GOL — nas rodadas de goleiro
+// EMPRESTADO (por atraso, ver `MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER`), a nota
+// dele fica de fora por completo daquela rodada específica.
+describe('teamMetrics — nota de goleiro fica de fora do eixo defensivo nas rodadas de goleiro EMPRESTADO por atraso', () => {
+  // Time de 7 (1 goleiro reservado + 6 de linha, sem banco) com 1 ÚNICO
+  // goleiro apto — o mesmo goleiro que carrega o atraso. Enquanto ausente
+  // (jogos 1–2), o time fica com só 6 disponíveis: goleiro EMPRESTADO, nota
+  // dele fora da conta. A partir do jogo 3 ele é o único apto e joga TODAS
+  // as rodadas restantes no gol.
+  const buildTime = (gkRating: number): DivTeam => {
+    idc = 0;
+    const gkPlayer = P('DEFENSOR', 70, { isGoalkeeper: true, gk: gkRating });
+    const line = [
+      P('DEFENSOR', 80), P('DEFENSOR', 60), P('MEIA', 80), P('MEIA', 70), P('MEIA', 60), P('ATACANTE', 90),
+    ];
+    return {
+      id: 1, name: 'T', gk: resolvePlayer(gkPlayer), line: line.map(resolvePlayer), bench: [],
+    };
+  };
+
+  it('SEM atraso: a nota de goleiro pesa em TODAS as 6 rodadas (diferença de def = 1/3 da diferença de nota, nas 6 rodadas)', () => {
+    const defRuim = teamMetrics(buildTime(5), false, false, undefined, 6).def;
+    const defBom = teamMetrics(buildTime(95), false, false, undefined, 6).def;
+    // 90 de diferença de nota × 1/3 de peso, em TODAS as 6 rodadas = 30.
+    expect(defBom - defRuim).toBeCloseTo(30, 5);
+  });
+
+  it('COM atraso de 2 jogos: a diferença de def cai pra 4/6 do valor sem atraso (nota só pesa nas rodadas com goleiro PRÓPRIO em campo)', () => {
+    const lateArrivals = new Map([[buildTime(0).gk!.player.id, 2]]);
+    const defRuim = teamMetrics(buildTime(5), false, false, undefined, 6, lateArrivals).def;
+    const defBom = teamMetrics(buildTime(95), false, false, undefined, 6, lateArrivals).def;
+    // Só 4 das 6 rodadas têm goleiro próprio (as 2 primeiras são emprestadas
+    // por atraso) — a diferença cai proporcionalmente: (4/6) × 30 = 20.
+    expect(defBom - defRuim).toBeCloseTo(20, 5);
+  });
+});
+
+// Bug relatado pelo dono (2ª volta, reprodução EXATA do caso real dele):
+// elenco de 21 jogadores ativos, 3 times, exatamente 7 por time. Um jogador
+// (o "Léo" do relato) está marcado no filtro "Não jogará os primeiros jogos"
+// com 2 jogos de ausência. A 1ª correção (limiar do ELENCO COMPLETO, ver
+// `MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER`) não bastou: o elenco de 7 passava no
+// limiar mesmo em rodadas onde só 6 estavam DISPONÍVEIS por causa do atraso,
+// e o time voltava a jogar com 5 na linha. A correção definitiva torna a
+// decisão "reveza goleiro próprio?" POR RODADA (ver rotation.ts).
+describe('balanceTeamsOptions — reprodução EXATA do caso do dono: 21 jogadores, 3 times, 1 atrasado 2 jogos', () => {
+  // 21 = 3 goleiros (1 por time) + 18 de linha (6 por time) — fecha 7 por
+  // time SEM banco, exatamente como o relato ("exatamente 7 por time").
+  const pool21 = (): Player[] => {
+    idc = 0;
+    return [
+      P('DEFENSOR', 80, { isGoalkeeper: true, gk: 80 }),
+      P('DEFENSOR', 70, { isGoalkeeper: true, gk: 70 }),
+      P('DEFENSOR', 65, { isGoalkeeper: true, gk: 65 }),
+      P('DEFENSOR', 80), P('DEFENSOR', 60), P('DEFENSOR', 90), P('DEFENSOR', 50), P('DEFENSOR', 75), P('DEFENSOR', 55),
+      P('MEIA', 80), P('MEIA', 70), P('MEIA', 60), P('MEIA', 90), P('MEIA', 40), P('MEIA', 65),
+      P('ATACANTE', 90), P('ATACANTE', 60), P('ATACANTE', 80), P('ATACANTE', 70), P('ATACANTE', 55), P('ATACANTE', 85),
+    ];
+  };
+
+  it('rodadas 1 e 2 (ausência do Léo): time dele tem 6 na linha + goleiro emprestado; rodada 3+: volta a revezar goleiro próprio com 6 na linha + 1 no gol; NENHUMA rodada com menos de 6 na linha', () => {
+    withSeededRandom(7);
+    const players = pool21();
+    const leo = players[3]; // um jogador de linha qualquer — o relato não exige que seja goleiro
+    const out = balanceTeamsOptions(players, 3, {
+      candidates: 40,
+      lateArrivals: [{ playerId: leo.id, games: 2 }],
+    });
+    expect(out.length).toBeGreaterThan(0);
+    const division = out[0];
+    for (const t of division.teams) {
+      // exatamente 7 por time, sem banco — a condição exata do relato.
+      expect(t.slots.length + t.bench.length + (t.goalkeeper ? 1 : 0)).toBe(7);
+      expect(t.bench).toHaveLength(0);
+    }
+    const rosterIdsOf = (t: (typeof division.teams)[number]) =>
+      [...t.slots.map((s) => s.player.id), ...(t.goalkeeper ? [t.goalkeeper.id] : []), ...t.bench.map((b) => b.id)];
+    const leoTeam = division.teams.find((t) => rosterIdsOf(t).includes(leo.id));
+    expect(leoTeam).toBeDefined();
+
+    const totalGames = gamesForTeamCount(3);
+    const lateMap = clampLateArrivals([{ playerId: leo.id, games: 2 }], totalGames);
+    const sched = buildTeamSchedule(leoTeam!, totalGames, undefined, false, lateMap);
+
+    expect(sched.benchRuleBroken).toBe(false);
+    expect(sched.lineShortfall).toBeNull();
+    // NENHUMA rodada, em NENHUM caminho, com menos de 6 na linha.
+    for (const g of sched.games) expect(g.slots.length).toBe(6);
+    // Rodadas 1 e 2 (índices 0-1): Léo ausente, goleiro EMPRESTADO.
+    expect(sched.games[0].goalkeeperName).toBeNull();
+    expect(sched.games[1].goalkeeperName).toBeNull();
+    expect(sched.games[0].slots.some((s) => s.player.id === leo.id)).toBe(false);
+    expect(sched.games[1].slots.some((s) => s.player.id === leo.id)).toBe(false);
+    // Rodada 3 em diante: Léo chegou, elenco de 7 disponível de novo — volta
+    // a revezar goleiro PRÓPRIO.
+    for (const g of sched.games.slice(2)) expect(g.goalkeeperName).not.toBeNull();
+    expect(sched.games[2].arrivals).toEqual([leo.name]);
+  });
+
+  it('times SEM nenhum atrasado (os outros 2 times da mesma divisão) continuam revezando goleiro próprio em TODAS as rodadas — sem regressão', () => {
+    withSeededRandom(7);
+    const players = pool21();
+    const leo = players[3];
+    const out = balanceTeamsOptions(players, 3, {
+      candidates: 40,
+      lateArrivals: [{ playerId: leo.id, games: 2 }],
+    });
+    expect(out.length).toBeGreaterThan(0);
+    const division = out[0];
+    const rosterIdsOf = (t: (typeof division.teams)[number]) =>
+      [...t.slots.map((s) => s.player.id), ...(t.goalkeeper ? [t.goalkeeper.id] : []), ...t.bench.map((b) => b.id)];
+    const otherTeams = division.teams.filter((t) => !rosterIdsOf(t).includes(leo.id));
+    expect(otherTeams).toHaveLength(2);
+    const totalGames = gamesForTeamCount(3);
+    for (const t of otherTeams) {
+      expect(t.fieldsGoalkeeper).toBe(true);
+      const sched = buildTeamSchedule(t, totalGames);
+      for (const g of sched.games) {
+        expect(g.slots.length).toBe(6);
+        expect(g.goalkeeperName).not.toBeNull();
+      }
+    }
   });
 });

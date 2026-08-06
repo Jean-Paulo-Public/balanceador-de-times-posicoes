@@ -166,6 +166,30 @@ describe('buildTeamSchedule (rodízio de 6 jogos)', () => {
     expect(sch.games).toHaveLength(5);
   });
 
+  it('defesa própria: elenco de 6 (sem banco, sem goleiro reservado) NUNCA reveza goleiro próprio, mesmo se `fieldsGoalkeeper` vier true por engano', () => {
+    // Bug relatado pelo dono ("revezando goleiro e ficando com 5 na linha"):
+    // a causa raiz foi corrigida em `balance.ts` (`fielding` agora exige
+    // elenco >= MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER), mas este teste cobre a
+    // defesa PRÓPRIA de `buildTeamSchedule` (é chamado com um `BalancedTeam`
+    // já pronto vindo de fora — UI/exportação de imagem — então não deve
+    // confiar cegamente em `team.fieldsGoalkeeper` sem reconferir o tamanho
+    // do elenco): mesmo passando `fieldsGoalkeeper: true` (valor ERRADO) num
+    // time de 6, o rodízio nunca escala o goleiro do elenco nem produz menos
+    // de 6 na linha.
+    const gkApto = GK('GK-Apto', 80);
+    const line = [gkApto, P('L1', 'MEIA', 60), P('L2', 'MEIA', 60), P('L3', 'DEFENSOR', 60), P('L4', 'DEFENSOR', 60), P('L5', 'ATACANTE', 60)];
+    const sch = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: true, rotatingGoalkeepers: ['GK-Apto'], bench: [] }),
+      6,
+    );
+    for (const g of sch.games) {
+      expect(g.slots.length).toBe(6);
+      expect(g.goalkeeperName).toBeNull();
+      expect(g.benchNames).toHaveLength(0);
+    }
+    expect(sch.benchRuleBroken).toBe(false);
+  });
+
   it('1 goleiro e sem banco: constante ("Jogo 1 ao 6")', () => {
     const gk = GK('GK', 80);
     const line = [P('C1', 'DEFENSOR', 60), P('C2', 'MEIA', 60), P('C3', 'MEIA', 60), P('C4', 'MEIA', 60), P('C5', 'ATACANTE', 60), P('C6', 'ATACANTE', 60)];
@@ -340,7 +364,7 @@ describe('buildTeamSchedule + atrasados (LateArrival) — não é banco, é aus�
     expect(sch.lineShortfall).toBeNull();
   });
 
-  it('depois de entrar, a regra do banco (ninguém repete 2 rodadas seguidas) passa a valer normalmente pra ele', () => {
+  it('depois de entrar, a regra estrita do banco (ninguém repete 2 rodadas seguidas) continua valendo pra TODO MUNDO', () => {
     const { line, bench } = buildLateRoster();
     const lateArrivals = new Map([[bench[0].id, 2]]);
     const sch = buildTeamSchedule(
@@ -353,10 +377,85 @@ describe('buildTeamSchedule + atrasados (LateArrival) — não é banco, é aus�
       const prevBench = new Set(sch.games[i - 1].benchNames);
       for (const name of sch.games[i].benchNames) expect(prevBench.has(name)).toBe(false);
     }
-    // E ele de fato entra no rodízio normal de banco em algum momento depois de chegar
-    // (não fica isento pra sempre uma vez que chega).
+    // MUDANÇA DE COMPORTAMENTO (pedido do dono): quem chega atrasado é a
+    // ÚLTIMA escolha pro banco, enquanto houver alternativa elegível. Neste
+    // roster (9 outfielders no total, banco de 3 por rodada — B1 é o único
+    // atrasado, sobram sempre 8 não-atrasados de sobra) NUNCA falta
+    // alternativa, então B1 nunca precisa sentar — ver o teste de roster
+    // APERTADO abaixo pra cobrir o caso em que ele é forçado.
     const benchedAfterArrival = sch.games.slice(2).some((g) => g.benchNames.includes('B1'));
-    expect(benchedAfterArrival).toBe(true);
+    expect(benchedAfterArrival).toBe(false);
+  });
+
+  it('atrasado é a ÚLTIMA escolha pro banco: logo após chegar, senta OUTRO enquanto houver alternativa (roster com sobra de não-atrasados)', () => {
+    const { line, bench } = buildLateRoster();
+    const lateArrivals = new Map([[bench[0].id, 2]]); // B1 chega no jogo 3 (índice 2)
+    const sch = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench }),
+      6, undefined, false, lateArrivals,
+    );
+    // Nas rodadas imediatamente seguintes à chegada, com 8 não-atrasados
+    // disputando 3 vagas de banco, sempre existe alternativa — B1 nunca é
+    // escolhido.
+    expect(sch.games[2].benchNames).not.toContain('B1');
+    expect(sch.games[3].benchNames).not.toContain('B1');
+    // E, ao final, a contagem TOTAL de banco dos outros continua justa entre
+    // si (a exclusão de B1 do pool não quebra a justiça (b) dos demais).
+    const counts = new Map<string, number>();
+    for (const g of sch.games) for (const name of g.benchNames) counts.set(name, (counts.get(name) ?? 0) + 1);
+    const nonLateCounts = [...counts.entries()].filter(([name]) => name !== 'B1').map(([, c]) => c);
+    expect(Math.max(...nonLateCounts) - Math.min(...nonLateCounts)).toBeLessThanOrEqual(1);
+  });
+
+  it('atrasado SEM alternativa suficiente: quando o banco só fecha com ele, ele senta (não é inviabilidade) — e as idas dele se concentram nas ÚLTIMAS rodadas possíveis', () => {
+    // Roster APERTADO (pedido do dono, teste de concentração no fim): 6 de
+    // linha + 1 banco NÃO atrasado + 1 banco ATRASADO (chega no jogo 3,
+    // índice 2) — outfielders=8, benchCount=2. Com só 1 não-atrasado extra
+    // (fora dos 6 de linha, que também são outfielders aqui — fieldsGoalkeeper
+    // false), a partir da rodada de chegada o pool de não-atrasados
+    // frequentemente não fecha as 2 vagas sozinho (regra estrita exclui quem
+    // sentou na rodada anterior), forçando o atrasado a entrar — mas ele é
+    // SEMPRE a última escolha: só senta quando não sobra não-atrasado
+    // elegível.
+    const line = [
+      P('L1', 'MEIA', 80), P('L2', 'MEIA', 60), P('L3', 'MEIA', 60),
+      P('L4', 'DEFENSOR', 80), P('L5', 'DEFENSOR', 60), P('L6', 'ATACANTE', 60),
+    ];
+    const bench = [P('B1', 'MEIA', 60), P('B2', 'ATACANTE', 60)];
+    const lateArrivals = new Map([[bench[1].id, 2]]); // B2 chega no jogo 3 (índice 2)
+    const totalGames = 9;
+    const sch = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench }),
+      totalGames, undefined, false, lateArrivals,
+    );
+    expect(sch.benchRuleBroken).toBe(false); // forçar o atrasado no banco NÃO é inviabilidade
+    // Ele nunca senta ENQUANTO ausente (jogos 1–2, índices 0–1).
+    expect(sch.games[0].benchNames).not.toContain('B2');
+    expect(sch.games[1].benchNames).not.toContain('B2');
+    // Alguma rodada eventualmente força B2 (pool apertado) — sem isso o
+    // teste não estaria cobrindo o caso "sem alternativa" pedido.
+    const benchB2Rounds = sch.games
+      .map((g, i) => (g.benchNames.includes('B2') ? i : -1))
+      .filter((i) => i >= 0);
+    expect(benchB2Rounds.length).toBeGreaterThan(0);
+    // Concentração no fim (greedy por rodada, sem lookahead — ver comentário
+    // em `benchRotation.ts`): a PRIMEIRA vez que B2 senta não é logo depois
+    // de chegar (rodada 2) — outro senta primeiro enquanto há alternativa.
+    expect(benchB2Rounds[0]).toBeGreaterThan(2);
+    // A concentração no fim é MÁXIMA neste roster apertado: a única vez que
+    // B2 senta é na ÚLTIMA rodada possível do rodízio (9 jogos, índice 8) —
+    // greedy sem lookahead ainda assim empurra ele até o limite.
+    expect(benchB2Rounds).toEqual([totalGames - 1]);
+    // A contagem TOTAL dele no fim não fica absurdamente menor que a dos
+    // outros — a semeadura o EQUIPARA (não o isenta): ele entra já valendo o
+    // maior valor do time no momento da chegada. Não fica ISENTO (>0), e a
+    // diferença pro topo não é descolada da realidade de quem chegou 2 jogos
+    // depois de todo mundo (ele só teve 7 das 9 rodadas disponíveis).
+    const counts = new Map<string, number>();
+    for (const g of sch.games) for (const name of g.benchNames) counts.set(name, (counts.get(name) ?? 0) + 1);
+    const allCounts = [...counts.values()];
+    expect(counts.get('B2') ?? 0).toBeGreaterThan(0);
+    expect(Math.max(...allCounts) - (counts.get('B2') ?? 0)).toBeLessThanOrEqual(2);
   });
 
   it('um time SEM atrasados produz exatamente o mesmo resultado de antes (sem regressão)', () => {
@@ -371,6 +470,172 @@ describe('buildTeamSchedule + atrasados (LateArrival) — não é banco, é aus�
     );
     expect(withEmptyMap.games.map((g) => g.benchNames)).toEqual(withoutMap.games.map((g) => g.benchNames));
     expect(withEmptyMap.games.every((g) => g.arrivals.length === 0)).toBe(true);
+  });
+});
+
+// Bug relatado pelo dono (2ª volta do mesmo sintoma "5 na linha"): elenco
+// real de 21 jogadores / 3 times = 7 cada. Um jogador (aqui "Leo") está
+// marcado com 2 jogos de ausência. A 1ª correção (limiar do ELENCO COMPLETO)
+// não bastou porque ela olhava só pro tamanho do elenco (7, que passa o
+// limiar), ignorando que em rodadas específicas só 6 estão DISPONÍVEIS por
+// causa do atraso — o time seguia revezando goleiro próprio e sobrava com 5
+// na linha. A correção AGORA é por rodada: `MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER`
+// passa a ser checado contra quem está disponível NAQUELA rodada.
+describe('buildTeamSchedule — reprodução exata do bug relatado (elenco 7, 1 atrasado 2 jogos)', () => {
+  const buildTeamDeSete = () => {
+    const gk1 = GK('Leo', 70); // o atrasado é justamente um goleiro apto, pior caso
+    const gk2 = GK('Rui', 60);
+    const line = [
+      gk2, P('L1', 'MEIA', 80), P('L2', 'MEIA', 70), P('L3', 'MEIA', 60),
+      P('L4', 'DEFENSOR', 80), P('L5', 'DEFENSOR', 60),
+    ];
+    const bench: Player[] = [];
+    return { gk1, line, bench };
+  };
+
+  it('jogos 1 e 2 (ausência do Leo): 6 disponíveis, TODOS na linha, goleiro emprestado — NUNCA menos de 6 na linha', () => {
+    const { gk1, line, bench } = buildTeamDeSete();
+    const lateArrivals = new Map([[gk1.id, 2]]);
+    const sch = buildTeamSchedule(
+      team({
+        slots: line.map(slot), goalkeeper: gk1, fieldsGoalkeeper: true,
+        rotatingGoalkeepers: ['Leo', 'Rui'], bench,
+      }),
+      6, undefined, false, lateArrivals,
+    );
+    for (const g of sch.games.slice(0, 2)) {
+      expect(g.slots.length).toBe(6); // nunca 5 na linha — o bug original
+      expect(g.goalkeeperName).toBeNull(); // goleiro emprestado nestas 2 rodadas
+      expect(g.slots.some((s) => s.player.name === 'Leo')).toBe(false); // Leo nem em campo (ausente)
+    }
+  });
+
+  it('jogo 3 em diante (Leo chegou, 7 disponíveis): volta a revezar goleiro próprio, 6 na linha + 1 no gol', () => {
+    const { gk1, line, bench } = buildTeamDeSete();
+    const lateArrivals = new Map([[gk1.id, 2]]);
+    const sch = buildTeamSchedule(
+      team({
+        slots: line.map(slot), goalkeeper: gk1, fieldsGoalkeeper: true,
+        rotatingGoalkeepers: ['Leo', 'Rui'], bench,
+      }),
+      6, undefined, false, lateArrivals,
+    );
+    for (const g of sch.games.slice(2)) {
+      expect(g.slots.length).toBe(6);
+      expect(g.goalkeeperName).not.toBeNull(); // goleiro PRÓPRIO revezando de novo
+    }
+    // Chegada registrada exatamente no jogo 3 (índice 2).
+    expect(sch.games[2].arrivals).toEqual(['Leo']);
+  });
+
+  it('NENHUMA rodada, em NENHUM caminho, tem menos de 6 na linha', () => {
+    const { gk1, line, bench } = buildTeamDeSete();
+    const lateArrivals = new Map([[gk1.id, 2]]);
+    const sch = buildTeamSchedule(
+      team({
+        slots: line.map(slot), goalkeeper: gk1, fieldsGoalkeeper: true,
+        rotatingGoalkeepers: ['Leo', 'Rui'], bench,
+      }),
+      6, undefined, false, lateArrivals,
+    );
+    expect(sch.games).toHaveLength(6);
+    for (const g of sch.games) expect(g.slots.length).toBe(6);
+    expect(sch.benchRuleBroken).toBe(false);
+    expect(sch.lineShortfall).toBeNull();
+  });
+
+  it('regressão — MESMO time de 7 SEM atrasado nenhum: revezamento de goleiro próprio em TODAS as rodadas, sem regressão', () => {
+    const { gk1, line, bench } = buildTeamDeSete();
+    const sch = buildTeamSchedule(
+      team({
+        slots: line.map(slot), goalkeeper: gk1, fieldsGoalkeeper: true,
+        rotatingGoalkeepers: ['Leo', 'Rui'], bench,
+      }),
+      6,
+    );
+    for (const g of sch.games) {
+      expect(g.slots.length).toBe(6);
+      expect(g.goalkeeperName).not.toBeNull();
+    }
+  });
+
+  it('regressão — time de 6 (sem banco, sem goleiro reservado) continua igual a hoje: nunca reveza goleiro próprio', () => {
+    const line = [
+      GK('GK-Unico', 80), P('L1', 'MEIA', 60), P('L2', 'MEIA', 60),
+      P('L3', 'DEFENSOR', 60), P('L4', 'DEFENSOR', 60), P('L5', 'ATACANTE', 60),
+    ];
+    const sch = buildTeamSchedule(
+      team({ slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: false, rotatingGoalkeepers: [], bench: [] }),
+      6,
+    );
+    for (const g of sch.games) {
+      expect(g.slots.length).toBe(6);
+      expect(g.goalkeeperName).toBeNull();
+    }
+  });
+});
+
+describe('fila de goleiros — atrasado vai pro FIM (pedido do dono, com precedência da regra do Jogo 1)', () => {
+  it('goleiro atrasado só aparece no gol nas ÚLTIMAS rodadas do rodízio (nunca logo após chegar, havendo alternativa) e nunca durante a ausência', () => {
+    // 3 goleiros aptos, todos DISPONÍVEIS o tempo todo exceto GK3 (atrasado 2
+    // jogos) — sem banco, elenco de 9 (3 goleiros + 6 de linha) pra garantir
+    // capacidade estrutural (>=7) com sobra.
+    const gk1 = GK('GK1-Melhor', 90);
+    const gk2 = GK('GK2-Bom', 80);
+    const gk3 = GK('GK3-Atrasado', 100); // de propósito, o MELHOR goleiro — não deveria adiantar nada
+    const line = [
+      gk1, gk2, gk3, P('L1', 'MEIA', 60), P('L2', 'MEIA', 60), P('L3', 'DEFENSOR', 60),
+      P('L4', 'DEFENSOR', 60), P('L5', 'ATACANTE', 60), P('L6', 'ATACANTE', 60),
+    ];
+    const lateArrivals = new Map([[gk3.id, 2]]); // GK3 chega no jogo 3 (índice 2)
+    const sch = buildTeamSchedule(
+      team({
+        slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: true,
+        rotatingGoalkeepers: ['GK1-Melhor', 'GK2-Bom', 'GK3-Atrasado'], bench: [],
+      }),
+      6, undefined, false, lateArrivals,
+    );
+    // Nunca no gol enquanto ausente (jogos 1–2, índices 0–1).
+    expect(sch.games[0].goalkeeperName).not.toBe('GK3-Atrasado');
+    expect(sch.games[1].goalkeeperName).not.toBe('GK3-Atrasado');
+    // Logo após chegar (jogo 3, índice 2) — havendo alternativa (GK1/GK2
+    // disponíveis) — NÃO é ele quem abre no gol.
+    expect(sch.games[2].goalkeeperName).not.toBe('GK3-Atrasado');
+    // Ele só aparece no gol (se aparecer) nas rodadas finais do rodízio.
+    const gk3Rounds = sch.games
+      .map((g, i) => (g.goalkeeperName === 'GK3-Atrasado' ? i : -1))
+      .filter((i) => i >= 0);
+    for (const r of gk3Rounds) expect(r).toBeGreaterThanOrEqual(sch.games.length - 2);
+  });
+
+  it('regra do Jogo 1 tem PRECEDÊNCIA sobre o critério de atraso: se o único não-atacante apto é o atrasado, ele pode abrir mesmo assim (mas só quando disponível)', () => {
+    // Só 2 goleiros aptos: um atacante (não-atrasado) e um não-atacante
+    // (atrasado). A regra do Jogo 1 preferiria o não-atacante, mas ele está
+    // ausente no jogo 1 — então, NESSA rodada específica, o atacante (única
+    // alternativa disponível) tem que jogar no gol; a fila só reflete a
+    // PREFERÊNCIA de ordem, a disponibilidade por rodada decide quem de fato
+    // está lá.
+    // Elenco de 8 (e não 7): a ausência de 1 jogador no jogo 1 tem de deixar
+    // 7 disponíveis (>= MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER) — senão o time
+    // simplesmente EMPRESTA o goleiro naquela rodada (ver bug principal
+    // acima) e este teste não estaria isolando a regra de precedência que
+    // quer cobrir.
+    const atacanteGk = GK('Atacante-GK', 60, { acceptedPositions: only('PIVO') });
+    const zagueiroGkAtrasado = GK('Zagueiro-GK-Atrasado', 90, { acceptedPositions: only('FIXO') });
+    const line = [
+      atacanteGk, zagueiroGkAtrasado, P('L1', 'MEIA', 60), P('L2', 'MEIA', 60),
+      P('L3', 'DEFENSOR', 60), P('L4', 'DEFENSOR', 60), P('L5', 'ATACANTE', 60), P('L6', 'ATACANTE', 60),
+    ];
+    const lateArrivals = new Map([[zagueiroGkAtrasado.id, 1]]); // ausente só no jogo 1
+    const sch = buildTeamSchedule(
+      team({
+        slots: line.map(slot), goalkeeper: null, fieldsGoalkeeper: true,
+        rotatingGoalkeepers: ['Atacante-GK', 'Zagueiro-GK-Atrasado'], bench: [],
+      }),
+      6, undefined, false, lateArrivals,
+    );
+    expect(sch.goalkeeperWarning).toBeNull(); // não é "sem alternativa" — o não-atacante existe, só está ausente
+    expect(sch.games[0].goalkeeperName).toBe('Atacante-GK'); // única alternativa disponível no jogo 1
   });
 });
 

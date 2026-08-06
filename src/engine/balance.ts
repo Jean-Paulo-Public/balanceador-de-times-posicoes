@@ -18,7 +18,7 @@ import { teamDisplayLabel } from '../domain/teamLabel';
 import { effectiveAttributesBase, effectiveGk } from './playerModel';
 import { ovr, potencialAtaque, estabilidadeDefensiva, coberturaGol, DEF_STABILITY_BETA } from './scoring';
 import { chooseBestSystem, createFormationCache, type FormationCache, type FormationShape, type FieldZone } from './formationModel';
-import { buildTeamSchedule, gamesForTeamCount, clampLateArrivals } from './rotation';
+import { buildTeamSchedule, gamesForTeamCount, clampLateArrivals, MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER } from './rotation';
 import { generateTeams } from './generateTeams';
 import { checkPositionFeasibility, joinNames, type FeasibilityResult } from './feasibility';
 
@@ -26,13 +26,14 @@ import { checkPositionFeasibility, joinNames, type FeasibilityResult } from './f
 // Jogador resolvido (com atributos garantidos)
 // ---------------------------------------------------------------------------
 
-interface RP {
+// Exportado só pra teste (mesmo motivo de `TeamMetrics`/`teamMetrics` acima).
+export interface RP {
   player: Player;
   attrs: ReturnType<typeof effectiveAttributesBase>;
   gk: number | null;
 }
 
-const resolvePlayer = (p: Player): RP => ({
+export const resolvePlayer = (p: Player): RP => ({
   player: p,
   attrs: effectiveAttributesBase(p),
   gk: effectiveGk(p),
@@ -49,7 +50,8 @@ const variance = (v: number[]): number => {
   return v.reduce((acc, x) => acc + (x - m) ** 2, 0) / v.length;
 };
 
-interface DivTeam {
+// Exportado só pra teste (mesmo motivo de `TeamMetrics`/`teamMetrics` acima).
+export interface DivTeam {
   id: number;
   name: string;
   gk: RP | null;   // goleiro reservado (quando o motor reserva um)
@@ -66,7 +68,11 @@ interface DivTeam {
 const ATTACK_ZONE_FACTOR: Record<FieldZone, number> = { DEF: 0.30, MEI: 0.70, ATA: 1.00 };
 const DEFENSE_ZONE_FACTOR: Record<FieldZone, number> = { DEF: 1.00, MEI: 0.70, ATA: 0.30 };
 
-interface TeamMetrics {
+// Exportado só pra teste (ver balance.test.ts, verificação direta de que a
+// nota de goleiro fica de fora do eixo defensivo nas rodadas de goleiro
+// EMPRESTADO por atraso) — nada de produção importa isto além de
+// `teamMetrics`/`buildBalancedTeam` abaixo.
+export interface TeamMetrics {
   geral: number;
   /** Ponderado por zona — para o CUSTO (comparação entre times). */
   off: number;
@@ -124,6 +130,49 @@ interface TeamMetrics {
 const rotatingGks = (t: DivTeam): RP[] =>
   [t.gk, ...t.line].filter((r): r is RP => !!r && r.player.isGoalkeeper && r.gk != null);
 
+/**
+ * Tamanho do ELENCO COMPLETO deste time (goleiro reservado + 6 de linha +
+ * banco) — é este número, e não a mera existência de alguém apto ao gol, que
+ * decide se o time pode revezar o PRÓPRIO goleiro (ver
+ * `MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER` em rotation.ts).
+ */
+const fullRosterSize = (t: DivTeam): number => (t.gk ? 1 : 0) + t.line.length + t.bench.length;
+
+/**
+ * Decide se o time TEM CAPACIDADE ESTRUTURAL de escalar/revezar goleiro
+ * PRÓPRIO nesta divisão — bug relatado pelo dono: "está revezando goleiro e
+ * ficando com 5 na linha". Antes desta checagem, `fielding` considerava só
+ * "existe alguém apto ao gol" — bastava isso pra tentar tirar um jogador da
+ * linha e colocá-lo no gol, mesmo em times de 6 (onde os 6 são TODOS de linha
+ * e o goleiro tem de vir EMPRESTADO de fora). A regra correta (pedido do
+ * dono): só tem CAPACIDADE de revezar goleiro PRÓPRIO com pelo menos
+ * `MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER` (7) no elenco completo. Com 6, mesmo
+ * alguém apto ao gol existindo (e é comum existir — é assim que o empréstimo
+ * funciona quando é a vez do time ficar de fora), o time joga com o gol
+ * emprestado e os 6 vão pra linha.
+ *
+ * *** CORREÇÃO DE DESIGN (2ª volta do mesmo bug, com atrasados) ***: uma
+ * versão anterior deste comentário afirmava que esta regra era "do ELENCO
+ * ... NUNCA por rodada" — ISSO ESTAVA ERRADO e foi corrigido: o bug
+ * reapareceu quando um jogador com `LateArrival` deixava o time com só 6
+ * disponíveis EM RODADAS ESPECÍFICAS (elenco de 7+ no total, mas faltando
+ * gente bastante numa rodada) — o time revezava goleiro próprio mesmo assim
+ * e voltava a jogar com 5 na linha.
+ *
+ * O que esta função (`canFieldOwnGoalkeeper`) calcula CONTINUA sendo do
+ * elenco completo — isso não mudou — mas agora representa só a CAPACIDADE
+ * ESTRUTURAL (um teto): "o time tem corpo pra revezar goleiro próprio SE
+ * todo mundo estiver presente". A decisão do que de fato acontece EM CADA
+ * RODADA (considerando quem está ausente por atraso NAQUELA rodada
+ * específica) foi movida pra `buildTeamSchedule` (rotation.ts, variável
+ * `fieldedThisRound`) — é ali, não aqui, que mora a regra "por rodada". Ver
+ * o comentário de `MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER` em rotation.ts para
+ * o desenho completo (inclusive por que um mesmo time pode revezar goleiro
+ * próprio em algumas rodadas e usar emprestado em outras, na MESMA divisão).
+ */
+const canFieldOwnGoalkeeper = (t: DivTeam, neverGk: boolean, rot: RP[]): boolean =>
+  !neverGk && rot.length > 0 && fullRosterSize(t) >= MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER;
+
 /** Inferência "geral" (jogo-base, sem rotação) — usada pro resumo/tática/roster exibidos. */
 const baseInference = (t: DivTeam, cache?: FormationCache) => chooseBestSystem(t.line.map((r) => r.player), cache);
 
@@ -132,7 +181,7 @@ const baseInference = (t: DivTeam, cache?: FormationCache) => chooseBestSystem(t
  * `buildTeamSchedule` (que já reinfere o sistema por jogo, aplica a fila do
  * goleiro com a regra do Jogo 1, e escalona o banco) sobre a escalação-base.
  */
-const teamMetrics = (
+export const teamMetrics = (
   t: DivTeam, neverGk: boolean, allowTwoConsecutiveBench: boolean, cache?: FormationCache, totalGames = 6,
   lateArrivals?: ReadonlyMap<string, number>,
 ): TeamMetrics => {
@@ -147,7 +196,7 @@ const teamMetrics = (
   }
   const inf = baseInference(t, cache);
   const rot = rotatingGks(t);
-  const fielding = !neverGk && rot.length > 0;
+  const fielding = canFieldOwnGoalkeeper(t, neverGk, rot);
 
   const baseSlots = inf.assignments.map((a) => ({
     player: t.line[a.playerIndex].player,
@@ -619,11 +668,32 @@ export interface BalancedTeam {
   formation: FormationShape;
   slots: BalancedSlot[];
   goalkeeper: Player | null;
+  /**
+   * SIGNIFICADO (definido explicitamente, porque agora pode variar por
+   * jogo — ver `MIN_ROSTER_TO_ROTATE_OWN_GOALKEEPER`/`buildTeamSchedule` em
+   * rotation.ts): CAPACIDADE ESTRUTURAL do time, calculada do ELENCO
+   * COMPLETO (goleiro reservado + 6 de linha + banco) como se TODO MUNDO
+   * estivesse presente — "este time TEM corpo pra revezar goleiro próprio
+   * quando ninguém falta". NÃO é "o goleiro próprio joga em toda rodada
+   * desta divisão": com atrasados (`LateArrival`), rodadas específicas em
+   * que sobrarem menos de 7 disponíveis usam goleiro EMPRESTADO mesmo com
+   * este campo `true` — é esperado, não uma inconsistência. Pra saber o que
+   * de fato aconteceu EM CADA JOGO, use `GameLineup.goalkeeperId` (por jogo,
+   * `null` = emprestado naquele jogo específico), nunca este campo.
+   */
   fieldsGoalkeeper: boolean;
   rotatingGoalkeepers: string[];
   bench: Player[];
   metrics: {
     geral: number; off: number; def: number; recuo: number; pressao: number;
+    /**
+     * SOMENTE INFORMATIVO (média das notas dos goleiros aptos que revezam
+     * NESTE time — ver `TeamMetrics.cobertura` acima para o detalhe
+     * completo). Assim como `fieldsGoalkeeper`, é calculado da CAPACIDADE do
+     * elenco completo, não "a nota de quem jogou em cada rodada" — pode
+     * ficar preenchido mesmo em divisões onde algumas rodadas usam goleiro
+     * emprestado por causa de atraso.
+     */
     cobertura: number | null; fitQuality: number; feasible: boolean;
   };
 }

@@ -39,6 +39,22 @@
 //      (`chooseBestSystem`), ou seja, preserva melhor o equilíbrio/sistema
 //      tático. Heurística (não é ótimo global): avalia só as combinações
 //      dentro do grupo empatado na fronteira de corte.
+//
+// ATRASADOS (pedido do dono): quem tem `LateArrival` configurado deve ir pro
+// banco o MAIS PARA O FIM POSSÍVEL depois que chega (ele já perdeu jogos por
+// atraso; não faz sentido a primeira coisa que ele faça ao chegar seja
+// sentar). A peça principal disso é a SEMEADURA da contagem acumulada dele
+// em `rotation.ts` (`buildTeamSchedule`) no exato momento em que ele fica
+// disponível pela 1ª vez: `benchCounts[atrasado] = maior contagem do time
+// naquele instante` — com isso o próprio critério (b) já o empurra pro fim,
+// SEM ramo especial de seleção aqui. O `lateIds` que este arquivo recebe
+// (ver `BenchRoundContext`) serve só pro desempate FINO de empates exatos de
+// contagem (ver `priorityOf` abaixo) — sem ele, um empate na contagem
+// (raro, mas possível) poderia mandar o atrasado sentar antes de quem está
+// no time desde o início, na mesma rodada. Se o banco só puder ser
+// preenchido com atrasados, eles sentam normalmente — não é inviabilidade
+// nova, é só "não tinha alternativa" (a regra (a) estrita e o desempate (c)
+// continuam intocados).
 
 import type { Player } from '../domain/types';
 import { chooseBestSystem, type FormationCache } from './formationModel';
@@ -76,6 +92,19 @@ export interface BenchRoundContext {
    * Mantida e atualizada por quem chama (`rotation.ts`), entre rodadas.
    */
   exceptionSpentAtRound?: ReadonlyMap<string, number>;
+  /**
+   * Ids de jogadores com ATRASO configurado (ver `LateArrival` em
+   * domain/types.ts) — vale pra qualquer jogador atrasado deste time,
+   * independente de já ter chegado ou não (quem ainda está ausente nem
+   * aparece em `outfielders` desta rodada, então o id aqui é inofensivo até
+   * ele chegar). Usado SÓ como desempate (b) — ver `priorityOf` abaixo: a
+   * peça que realmente empurra o atrasado pro fim da fila é a SEMEADURA da
+   * contagem dele em `rotation.ts` (`benchCounts` no momento em que ele
+   * chega = o MAIOR valor do time naquele instante). Este campo aqui cobre
+   * só o caso de EMPATE exato na contagem — sem ele, um empate poderia
+   * mandar o atrasado sentar antes de quem está no time desde o início.
+   */
+  lateIds?: ReadonlySet<string>;
 }
 
 export interface BenchRoundResult {
@@ -124,6 +153,21 @@ const MAX_TIEBREAK_COMBOS = 2;
 
 const countOf = (benchCounts: ReadonlyMap<string, number>, p: Player): number => benchCounts.get(p.id) ?? 0;
 
+/**
+ * Chave de prioridade pro critério (b) — igual à contagem acumulada, EXCETO
+ * que um atrasado (`lateIds`) recebe um nudge fracionário (+0,5) que só
+ * importa em EMPATE exato de contagem: como as contagens reais são sempre
+ * inteiras, o nudge nunca muda a ordem entre jogadores com contagens
+ * DIFERENTES, só desempata quando ela é IGUAL — nesse caso o atrasado fica
+ * depois (prioridade "pior", ou seja, sentado por último). A peça que faz o
+ * trabalho pesado de empurrar o atrasado pro fim é a SEMEADURA da contagem
+ * dele em `rotation.ts` no momento em que ele chega (`benchCounts[atrasado]
+ * = maior contagem do time naquele instante) — isto aqui é só o desempate
+ * fino que a semeadura por si só não cobre (ver `BenchRoundContext.lateIds`).
+ */
+const priorityOf = (benchCounts: ReadonlyMap<string, number>, lateIds: ReadonlySet<string>, p: Player): number =>
+  countOf(benchCounts, p) + (lateIds.has(p.id) ? 0.5 : 0);
+
 /** C(n, k) — só pra decidir se vale a pena gerar as combinações de verdade. */
 const combinationsCount = (n: number, k: number): number => {
   if (k < 0 || k > n) return 0;
@@ -142,7 +186,8 @@ const pickByCountThenImpact = (
   benchCount: number,
   benchCounts: ReadonlyMap<string, number>,
   stayingRest: Player[],
-  cache?: FormationCache,
+  cache: FormationCache | undefined,
+  lateIds: ReadonlySet<string>,
 ): Player[] => {
   if (benchCount <= 0) return [];
   // Desempate secundário por `id` (não pela ordem de chegada no array, que
@@ -150,17 +195,18 @@ const pickByCountThenImpact = (
   // aleatório do gerador de divisões candidatas) — mantém a escolha
   // determinística para o MESMO conjunto de jogadores, independente de qual
   // ordem eles chegaram aqui.
-  const sorted = [...pool].sort((a, b) => countOf(benchCounts, a) - countOf(benchCounts, b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const sorted = [...pool].sort((a, b) =>
+    priorityOf(benchCounts, lateIds, a) - priorityOf(benchCounts, lateIds, b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   if (benchCount >= sorted.length) return sorted;
 
-  const cutoff = countOf(benchCounts, sorted[benchCount - 1]);
-  const below = sorted.filter((p) => countOf(benchCounts, p) < cutoff);
-  const atCutoff = sorted.filter((p) => countOf(benchCounts, p) === cutoff);
+  const cutoff = priorityOf(benchCounts, lateIds, sorted[benchCount - 1]);
+  const below = sorted.filter((p) => priorityOf(benchCounts, lateIds, p) < cutoff);
+  const atCutoff = sorted.filter((p) => priorityOf(benchCounts, lateIds, p) === cutoff);
   const remainingSlots = benchCount - below.length;
 
   if (atCutoff.length <= remainingSlots) return [...below, ...atCutoff];
 
-  const above = sorted.filter((p) => countOf(benchCounts, p) > cutoff);
+  const above = sorted.filter((p) => priorityOf(benchCounts, lateIds, p) > cutoff);
 
   // Teto de custo: grupo empatado grande demais pra avaliar toda combinação
   // (ver `MAX_TIEBREAK_COMBOS`) — usa a ordem estável (todos ali JÁ são
@@ -190,6 +236,7 @@ export const chooseBenchGroup = (ctx: BenchRoundContext): BenchRoundResult => {
   const {
     outfielders, benchCount, benchCounts, benchedLastRound, alwaysOnField = [], cache,
     allowTwoConsecutive = false, round = 0, exceptionSpentAtRound = new Map<string, number>(),
+    lateIds = new Set<string>(),
   } = ctx;
   if (benchCount <= 0) return { benched: [], spentExceptionIds: [], impossible: false };
 
@@ -216,7 +263,7 @@ export const chooseBenchGroup = (ctx: BenchRoundContext): BenchRoundResult => {
 
   if (strictEligible.length >= benchCount) {
     const benched = pickByCountThenImpact(
-      strictEligible, benchCount, benchCounts, [...mustPlayLastRound, ...cooling, ...alwaysOnField], cache,
+      strictEligible, benchCount, benchCounts, [...mustPlayLastRound, ...cooling, ...alwaysOnField], cache, lateIds,
     );
     return { benched, spentExceptionIds: [], impossible: false };
   }
@@ -249,7 +296,7 @@ export const chooseBenchGroup = (ctx: BenchRoundContext): BenchRoundResult => {
   // contabilizados como "ficam" pela própria lógica de `pickByCountThenImpact`
   // (o pool de onde ela escolhe É `repeaters`).
   const repeatersChosen = pickByCountThenImpact(
-    repeaters, needed, benchCounts, [...cooling, ...alwaysOnField], cache,
+    repeaters, needed, benchCounts, [...cooling, ...alwaysOnField], cache, lateIds,
   );
   const benched = [...strictEligible, ...repeatersChosen];
   return { benched, spentExceptionIds: repeatersChosen.map((p) => p.id), impossible: false };
