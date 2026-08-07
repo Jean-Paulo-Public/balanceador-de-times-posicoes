@@ -8,7 +8,7 @@ import { LINE_POSITIONS, type LinePosition } from '../../domain/positions';
 import type { Player } from '../../domain/types';
 import { FieldMapV2 } from './FieldMapV2';
 import { teamTactics } from './tactics';
-import { buildFieldMapsImage } from './fieldMapImage';
+import { buildFieldMapsImage, buildSingleTeamFieldImage } from './fieldMapImage';
 import { ScenarioList } from './ScenarioList';
 import { formatScenarioPosition } from './scenarioSummary';
 import { teamDisplayLabel } from '../../domain';
@@ -23,9 +23,9 @@ const chip = (label: string, value: number | string) => (
 );
 
 function TeamBlock({
-  team, totalGames, allowTwoConsecutiveBench, lateArrivalsMap,
+  team, totalGames, allowTwoConsecutiveBench, lateArrivalsMap, onExportImage, isExportingImage,
 }: {
-  team: BalancedTeam; totalGames: number; allowTwoConsecutiveBench: boolean; lateArrivalsMap: Map<string, number>;
+  team: BalancedTeam; totalGames: number; allowTwoConsecutiveBench: boolean; lateArrivalsMap: Map<string, number>; onExportImage?: (team: BalancedTeam) => Promise<void>; isExportingImage: boolean;
 }) {
   const t = team;
   const tactics = teamTactics(t);
@@ -54,6 +54,18 @@ function TeamBlock({
         <h3 className={styles.proposalTitle}>{teamDisplayLabel(t)} — {t.formation}</h3>
         <span className="chip chip-primary" style={{ fontWeight: 700 }}>OVR {t.metrics.geral}</span>
       </div>
+
+      {onExportImage && (
+        <button
+          className="btn-secondary"
+          onClick={() => onExportImage(team)}
+          disabled={isExportingImage}
+          style={{ marginTop: 8, marginBottom: 10 }}
+        >
+          <ImageIcon size={14} />
+          {isExportingImage ? 'Gerando...' : 'Exportar mapinhas (por time)'}
+        </button>
+      )}
 
       {arrivals.length > 0 && (
         <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', margin: '0 0 10px' }}>
@@ -260,6 +272,29 @@ export function SimulationTab() {
     }
   };
 
+  const handleExportSingleTeamImage = async (team: BalancedTeam) => {
+    setIsExportingImage(true);
+    try {
+      const blob = await buildSingleTeamFieldImage(team, simTotalGames, simLateArrivalsMap);
+      const filename = `${teamDisplayLabel(team)}_mapinhas.png`;
+      const file = new File([blob], filename, { type: 'image/png' });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: teamDisplayLabel(team) });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      if ((e as Error)?.name !== 'AbortError') console.error('Falha ao exportar imagem:', e);
+    } finally {
+      setIsExportingImage(false);
+    }
+  };
+
   return (
     <div className="animate-fade-in">
       <div className="header-top">
@@ -446,6 +481,8 @@ export function SimulationTab() {
                 key={t.id} team={t} totalGames={simTotalGames}
                 allowTwoConsecutiveBench={simAllowTwoConsecutiveBench}
                 lateArrivalsMap={simLateArrivalsMap}
+                onExportImage={handleExportSingleTeamImage}
+                isExportingImage={isExportingImage}
               />
             ))}
           </>

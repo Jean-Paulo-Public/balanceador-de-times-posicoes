@@ -56,9 +56,9 @@ export function FieldMapV2({ slots, goalkeeperName, label }: FieldMapV2Props) {
       >
         <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', height: 1, background: 'rgba(255,255,255,0.25)' }} />
         <div style={{ position: 'absolute', left: '50%', top: '50%', width: 44, height: 44, marginLeft: -22, marginTop: -22, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.22)' }} />
-        {goalkeeperName && <Chip x={50} y={11} label={goalkeeperName} role="GOL" gk />}
+        {goalkeeperName && <Chip x={50} y={9} label={goalkeeperName} role="GOL" gk />}
         {slots.map((s, i) => (
-          <Chip key={i} x={s.x} y={s.y + 6} label={s.player.name} role={ROLE_SHORT[s.role] ?? s.role} />
+          <Chip key={i} x={s.x} y={s.y} label={s.player.name} role={ROLE_SHORT[s.role] ?? s.role} />
         ))}
       </div>
     </div>

@@ -60,10 +60,10 @@ export const SYSTEMS: Record<TacticalSystem, SystemDef> = {
       'a dupla de meio mistura saída de bola com um ala que pode subir, e a dupla de frente combina criação com movimentação. ' +
       'É o sistema mais "de todo dia" — usado quando o elenco não pede um perfil extremo.',
     slots: [
-      S('FIXO', ['FIXO'], 50, 12),
-      S('LATERAL', ['LATERAL'], 78, 26),
-      S('VOL_ALA', ['VOLANTE', 'ALA'], 22, 30),
-      S('SA_MA', ['SEGUNDO_ATACANTE', 'MEIA_ATACANTE'], 35, 62),
+      S('FIXO', ['FIXO'], 50, 22),
+      S('LATERAL', ['LATERAL'], 78, 31),
+      S('VOL_ALA', ['VOLANTE', 'ALA'], 22, 35),
+      S('SA_MA', ['SEGUNDO_ATACANTE', 'MEIA_ATACANTE'], 35, 72),
       S('ALA', ['ALA'], 70, 58),
       S('PIVO', ['PIVO'], 50, 88),
     ],
@@ -76,9 +76,9 @@ export const SYSTEMS: Record<TacticalSystem, SystemDef> = {
       'um ala solitário dá largura, e a dupla de frente (segundo atacante + segundo atacante/meia-atacante) ataca o espaço junto. ' +
       'Bom quando o elenco tem finalizadores móveis mas nenhum pivô de área nato.',
     slots: [
-      S('FIXO', ['FIXO'], 50, 12),
-      S('LATERAL', ['LATERAL'], 25, 28),
-      S('VOLANTE', ['VOLANTE'], 75, 28),
+      S('FIXO', ['FIXO'], 50, 22),
+      S('LATERAL', ['LATERAL'], 25, 33),
+      S('VOLANTE', ['VOLANTE'], 75, 33),
       S('ALA', ['ALA'], 50, 52),
       S('SA1', ['SEGUNDO_ATACANTE'], 30, 84),
       S('SA2_MA', ['SEGUNDO_ATACANTE', 'MEIA_ATACANTE'], 70, 84),
@@ -91,10 +91,10 @@ export const SYSTEMS: Record<TacticalSystem, SystemDef> = {
       'Retranca: três defensores (fixo + 2 laterais) e só duas vagas ofensivas. Usado contra elencos mais fortes ou quando ' +
       'sobra gente de perfil defensivo — segura o jogo, sai rápido em contra-ataque com o pivô de referência.',
     slots: [
-      S('FIXO', ['FIXO'], 50, 12),
-      S('LAT1', ['LATERAL'], 22, 28),
-      S('LAT2', ['LATERAL'], 78, 28),
-      S('VOLANTE', ['VOLANTE'], 50, 46),
+      S('FIXO', ['FIXO'], 50, 22),
+      S('LAT1', ['LATERAL'], 22, 33),
+      S('LAT2', ['LATERAL'], 78, 33),
+      S('VOLANTE', ['VOLANTE'], 50, 51),
       S('ALA_MA', ['ALA', 'MEIA_ATACANTE'], 50, 66),
       S('PIVO', ['PIVO'], 50, 88),
     ],
@@ -107,11 +107,11 @@ export const SYSTEMS: Record<TacticalSystem, SystemDef> = {
       'criação/velocidade ocupam o meio-terço-final e um pivô finaliza. Usado quando o elenco tem muita gente de ataque e ' +
       'pouca vontade de recuar.',
     slots: [
-      S('FIXO', ['FIXO'], 50, 12),
-      S('VOL_LAT', ['VOLANTE', 'LATERAL'], 50, 30),
+      S('FIXO', ['FIXO'], 50, 22),
+      S('VOL_LAT', ['VOLANTE', 'LATERAL'], 50, 35),
       S('ALA1', ['ALA'], 20, 56),
       S('ALA2', ['ALA'], 80, 56),
-      S('MA_SA', ['MEIA_ATACANTE', 'SEGUNDO_ATACANTE'], 50, 62),
+      S('MA_SA', ['MEIA_ATACANTE', 'SEGUNDO_ATACANTE'], 50, 72),
       S('PIVO', ['PIVO'], 50, 88),
     ],
   },

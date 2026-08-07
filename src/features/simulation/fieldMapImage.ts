@@ -3,7 +3,7 @@
 // vertical (linhas), com o banco de cada time no topo. Times sem variação
 // mostram "Jogo 1 ao 6" e o resto fica preto. Ver Design v2, Seção 13.
 
-import { buildTeamSchedule, gamesForTeamCount, type BalanceResult } from '../../engine';
+import { buildTeamSchedule, gamesForTeamCount, type BalanceResult, type BalancedTeam } from '../../engine';
 import { teamDisplayLabel } from '../../domain';
 
 const ROLE_SHORT: Record<string, string> = {
@@ -60,7 +60,7 @@ const drawField = (
     ctx.fillText(role, cx, cy + 10);
   };
 
-  if (gkName) place(50, 15, gkName, 'GOL', true);
+  if (gkName) place(50, 9, gkName, 'GOL', true);
   for (const c of cells) place(c.x, c.y, c.label, ROLE_SHORT[c.role] ?? c.role, false);
 };
 
@@ -154,8 +154,7 @@ export const buildFieldMapsImage = async (
       }
       const cells: Cell[] = game.slots.map((s) => ({
         x: s.x,
-        // zaga sobe um pouco (descola do goleiro); 2º atacante recua um pouco em relação ao pivô.
-        y: s.zone === 'DEF' ? s.y + 7 : s.role === 'SEGUNDO_ATACANTE' ? s.y - 8 : s.y,
+        y: s.y,
         label: s.player.name,
         role: s.role,
       }));
@@ -164,6 +163,92 @@ export const buildFieldMapsImage = async (
   }
 
   return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Falha ao gerar a imagem'))), 'image/png');
+    canvas.toBlob((b: Blob | null) => (b ? resolve(b) : reject(new Error('Falha ao gerar a imagem'))), 'image/png');
+  });
+};
+
+export const buildSingleTeamFieldImage = async (
+  team: BalancedTeam,
+  totalGames: number,
+  lateArrivalsMap?: ReadonlyMap<string, number>,
+): Promise<Blob> => {
+  const schedule = buildTeamSchedule(team, totalGames, undefined, undefined, lateArrivalsMap);
+
+  const maxCols = 3;
+  const totalGameRows = schedule.constant ? 1 : schedule.games.length;
+  const cols = Math.min(maxCols, totalGameRows);
+  const rows = Math.ceil(totalGameRows / maxCols);
+
+  const cellW = 190;
+  const cellH = 224;
+  const headerH = 48;
+  const gap = 6;
+  const pad = 12;
+
+  const W = pad * 2 + cols * cellW + (cols - 1) * gap;
+  const H = pad * 2 + headerH + rows * cellH + (rows - 1) * gap;
+
+  const canvas = document.createElement('canvas');
+  const scale = 2;
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D indisponível');
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = '#0e1116';
+  ctx.fillRect(0, 0, W, H);
+
+  const headerCx = pad + (cols * cellW + (cols - 1) * gap) / 2;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(truncate(teamDisplayLabel(team), 30), headerCx, pad + 16);
+  ctx.fillStyle = '#93e6b0';
+  ctx.font = '9px sans-serif';
+  const benchTxt = team.bench.length
+    ? 'Banco: ' + team.bench.map((b) => b.name.split(' ')[0]).join(', ')
+    : 'Sem banco';
+  ctx.fillText(truncate(benchTxt, 50), headerCx, pad + 32);
+
+  const first = (nm: string): string => nm.split(' ')[0];
+  const games = schedule.constant ? [schedule.games[0]] : schedule.games;
+
+  for (let idx = 0; idx < games.length; idx++) {
+    const game = games[idx];
+    const row = Math.floor(idx / maxCols);
+    const col = idx % maxCols;
+
+    const x = pad + col * (cellW + gap);
+    const y = pad + headerH + row * (cellH + gap);
+
+    const title = schedule.constant
+      ? `Jogo 1 ao ${totalGames}`
+      : `Jogo ${idx + 1}`;
+
+    let subtitle = '';
+    if (!schedule.constant && idx > 0) {
+      const prev = schedule.games[idx - 1];
+      const cur = game;
+      const entra = prev.benchNames.filter((nm) => !cur.benchNames.includes(nm)).map(first);
+      const sai = cur.benchNames.filter((nm) => !prev.benchNames.includes(nm)).map(first);
+      if (sai.length || entra.length) subtitle = `Sai: ${sai.join(', ') || '—'}  Entra: ${entra.join(', ') || '—'}`;
+    }
+    if (game.arrivals.length) {
+      subtitle += (subtitle ? '  ' : '') + `Chega: ${game.arrivals.map(first).join(', ')}`;
+    }
+
+    const cells: Cell[] = game.slots.map((s) => ({
+      x: s.x,
+      y: s.y,
+      label: s.player.name,
+      role: s.role,
+    }));
+
+    drawField(ctx, x, y, cellW, cellH, `${title} · ${game.formation}`, subtitle, game.goalkeeperName, cells);
+  }
+
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b: Blob | null) => (b ? resolve(b) : reject(new Error('Falha ao gerar a imagem'))), 'image/png');
   });
 };
