@@ -33,6 +33,8 @@ interface RawPlayer {
   positionOverrides?: unknown;
   positionOrderIndifferent?: unknown;
   veteran?: unknown;
+  goodMarker?: unknown;
+  excludedTeammateIds?: unknown;
 }
 
 const isValidPositionValue = (v: unknown): v is PositionPreference =>
@@ -125,6 +127,37 @@ export const parseVeteran = (x: unknown): boolean | undefined =>
   typeof x === 'boolean' ? x : undefined;
 
 /**
+ * `goodMarker` ("sabe marcar bem") bruto: campo COSMÉTICO/opcional, EXATAMENTE
+ * o mesmo padrão de `parseVeteran` — tipo errado nunca descarta o jogador, só
+ * omite o campo. Aceita apenas `boolean`; qualquer outro tipo devolve
+ * `undefined` (campo ausente/`false`). Dado gravado por versão anterior do app
+ * simplesmente não tem a chave e cai nesse caso — ninguém vira marcador sozinho.
+ */
+export const parseGoodMarker = (x: unknown): boolean | undefined =>
+  typeof x === 'boolean' ? x : undefined;
+
+/**
+ * `excludedTeammateIds` ("não pode jogar com") bruto: campo COSMÉTICO/opcional
+ * MAS validado item a item (não é um booleano solto como `veteran`/
+ * `goodMarker`) — segue o padrão de `parseAcceptedPositions`: entrada
+ * malformada é descartada INDIVIDUALMENTE, nunca invalida o jogador inteiro.
+ * Descarta: itens que não são string, string vazia, duplicatas e o PRÓPRIO id
+ * do jogador (`ownId` — auto-exclusão não faz sentido; é defesa extra, o
+ * PlayerForm já não deixa cadastrar isso). Devolve `undefined` (campo
+ * ausente) quando `x` não é array, ou quando sobra lista vazia depois da
+ * limpeza — nunca um array vazio gravado à toa.
+ */
+export const parseExcludedTeammateIds = (x: unknown, ownId: string): string[] | undefined => {
+  if (!Array.isArray(x)) return undefined;
+  const seen = new Set<string>();
+  for (const item of x) {
+    if (typeof item !== 'string' || item === '' || item === ownId) continue; // descarta entrada malformada/auto-exclusão
+    seen.add(item); // Set já deduplica
+  }
+  return seen.size > 0 ? [...seen] : undefined;
+};
+
+/**
  * Valida um `positionOverrides` bruto (modelo v3.1 — exceções de atributo por
  * posição de linha): mapa ESPARSO posição → atributos parciais. DESCARTA
  * entradas malformadas em vez de invalidar o mapa inteiro:
@@ -206,6 +239,14 @@ export const normalizePlayer = (raw: RawPlayer | Player | null | undefined): Pla
   if (positionOrderIndifferent !== undefined) player.positionOrderIndifferent = positionOrderIndifferent;
   const veteran = parseVeteran(r.veteran);
   if (veteran !== undefined) player.veteran = veteran;
+  const goodMarker = parseGoodMarker(r.goodMarker);
+  if (goodMarker !== undefined) player.goodMarker = goodMarker;
+  // `ownId` precisa ser o id JÁ RESOLVIDO do jogador (`player.id`, com o
+  // fallback de `crypto.randomUUID()` já aplicado acima) — não `r.id` bruto,
+  // senão um jogador sem id cadastrado nunca teria a própria auto-exclusão
+  // filtrada corretamente.
+  const excludedTeammateIds = parseExcludedTeammateIds(r.excludedTeammateIds, player.id);
+  if (excludedTeammateIds !== undefined) player.excludedTeammateIds = excludedTeammateIds;
   return player;
 };
 

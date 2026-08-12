@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePlayer, normalizePlayers, parseAttrVector, parseAcceptedPositions, parsePositionOrderIndifferent, parseVeteran } from './migration';
+import {
+  normalizePlayer, normalizePlayers, parseAttrVector, parseAcceptedPositions, parsePositionOrderIndifferent,
+  parseVeteran, parseGoodMarker, parseExcludedTeammateIds,
+} from './migration';
 import { emptyAttrs } from '../domain/attributes';
 
 const VALID_ATTRS = { FIN: 70, CRI: 60, DRI: 55, DEF: 40, VEL: 65, RCD: 50, INT: 48, MOV: 45, FIS: 58, OFE: 50 };
@@ -300,5 +303,114 @@ describe('normalizePlayer — veteran (opcional/cosmético, mesmo padrão de pos
     const p = normalizePlayer({ name: 'SemVeteran', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS });
     expect(p).not.toBeNull();
     expect(p!.veteran).toBeUndefined();
+  });
+});
+
+describe('normalizePlayer — goodMarker ("sabe marcar bem", mesmo padrão de veteran)', () => {
+  it('parseGoodMarker aceita true/false e ignora qualquer outro tipo', () => {
+    expect(parseGoodMarker(true)).toBe(true);
+    expect(parseGoodMarker(false)).toBe(false);
+    expect(parseGoodMarker('true')).toBeUndefined();
+    expect(parseGoodMarker(1)).toBeUndefined();
+    expect(parseGoodMarker(null)).toBeUndefined();
+    expect(parseGoodMarker(undefined)).toBeUndefined();
+    expect(parseGoodMarker({})).toBeUndefined();
+  });
+
+  it('normalizePlayer grava goodMarker quando é boolean', () => {
+    const p = normalizePlayer({
+      name: 'Marcador', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, goodMarker: true,
+    });
+    expect(p!.goodMarker).toBe(true);
+  });
+
+  it('tipo inválido só OMITE o campo — nunca descarta o jogador', () => {
+    const p = normalizePlayer({
+      name: 'MarcadorInvalido', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, goodMarker: 'sim',
+    });
+    expect(p).not.toBeNull();
+    expect(p!.goodMarker).toBeUndefined();
+  });
+
+  it('dado de versão anterior (sem a chave) não vira marcador sozinho', () => {
+    const p = normalizePlayer({ name: 'SemMarcador', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS });
+    expect(p).not.toBeNull();
+    expect(p!.goodMarker).toBeUndefined();
+  });
+
+  it('goodMarker e veteran convivem no mesmo jogador (flags independentes)', () => {
+    const p = normalizePlayer({
+      name: 'VeteranoMarcador', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, veteran: true, goodMarker: true,
+    });
+    expect(p!.veteran).toBe(true);
+    expect(p!.goodMarker).toBe(true);
+  });
+});
+
+describe('normalizePlayer — excludedTeammateIds ("não pode jogar com")', () => {
+  it('parseExcludedTeammateIds filtra entradas não-string e descarta duplicatas', () => {
+    expect(parseExcludedTeammateIds(['a', 'b', 'a', 'b'], 'self')).toEqual(['a', 'b']);
+    expect(parseExcludedTeammateIds(['a', 1, null, undefined, {}, 'b'], 'self')).toEqual(['a', 'b']);
+  });
+
+  it('parseExcludedTeammateIds descarta o próprio id do jogador (auto-exclusão)', () => {
+    expect(parseExcludedTeammateIds(['a', 'self', 'b'], 'self')).toEqual(['a', 'b']);
+  });
+
+  it('parseExcludedTeammateIds descarta string vazia', () => {
+    expect(parseExcludedTeammateIds(['a', '', 'b'], 'self')).toEqual(['a', 'b']);
+  });
+
+  it('parseExcludedTeammateIds devolve undefined quando não é array, ou quando a limpeza esvazia a lista', () => {
+    expect(parseExcludedTeammateIds(undefined, 'self')).toBeUndefined();
+    expect(parseExcludedTeammateIds(null, 'self')).toBeUndefined();
+    expect(parseExcludedTeammateIds('a,b', 'self')).toBeUndefined();
+    expect(parseExcludedTeammateIds({}, 'self')).toBeUndefined();
+    expect(parseExcludedTeammateIds([], 'self')).toBeUndefined();
+    expect(parseExcludedTeammateIds(['self'], 'self')).toBeUndefined(); // só sobrava a auto-exclusão
+  });
+
+  it('normalizePlayer grava excludedTeammateIds quando é uma lista válida', () => {
+    const p = normalizePlayer({
+      id: 'x', name: 'Excludente', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, excludedTeammateIds: ['y', 'z'],
+    });
+    expect(p!.excludedTeammateIds).toEqual(['y', 'z']);
+  });
+
+  it('normalizePlayer descarta o PRÓPRIO id (já resolvido) da lista de exclusão', () => {
+    const p = normalizePlayer({
+      id: 'x', name: 'Excludente', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, excludedTeammateIds: ['x', 'y'],
+    });
+    expect(p!.excludedTeammateIds).toEqual(['y']);
+  });
+
+  it('tipo inválido só OMITE o campo — nunca descarta o jogador', () => {
+    const p = normalizePlayer({
+      name: 'ExclusaoInvalida', attributes: VALID_ATTRS, gk: null,
+      acceptedPositions: VALID_POS, excludedTeammateIds: 'não é array',
+    });
+    expect(p).not.toBeNull();
+    expect(p!.excludedTeammateIds).toBeUndefined();
+  });
+
+  it('dado de versão anterior (sem a chave) não vira exclusão sozinha', () => {
+    const p = normalizePlayer({ name: 'SemExclusao', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS });
+    expect(p).not.toBeNull();
+    expect(p!.excludedTeammateIds).toBeUndefined();
+  });
+
+  it('excludedTeammateIds convive com veteran/goodMarker (flags independentes)', () => {
+    const p = normalizePlayer({
+      name: 'Completo', attributes: VALID_ATTRS, gk: null, acceptedPositions: VALID_POS,
+      veteran: true, goodMarker: true, excludedTeammateIds: ['y'],
+    });
+    expect(p!.veteran).toBe(true);
+    expect(p!.goodMarker).toBe(true);
+    expect(p!.excludedTeammateIds).toEqual(['y']);
   });
 });

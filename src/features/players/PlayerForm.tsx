@@ -45,7 +45,7 @@ const POSITION_HELP: Record<Position, string> = {
 };
 
 export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
-  const { addPlayer, updatePlayer } = usePlayerStore();
+  const { addPlayer, updatePlayer, players } = usePlayerStore();
 
   const [name, setName] = useState(editingPlayer?.name || '');
   const [isGoalkeeper, setIsGoalkeeper] = useState(editingPlayer?.isGoalkeeper || false);
@@ -61,6 +61,27 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     editingPlayer?.positionOrderIndifferent ?? false,
   );
   const [veteran, setVeteran] = useState<boolean>(editingPlayer?.veteran ?? false);
+  const [goodMarker, setGoodMarker] = useState<boolean>(editingPlayer?.goodMarker ?? false);
+  // "Não pode jogar com" (ver `excludedTeammateIds` em domain/types.ts) — lista
+  // de ids do PRÓPRIO cadastro deste jogador. A UI só grava de UM lado; a
+  // simetria (se A exclui B, B também não joga com A) é resolvida no MOTOR
+  // (`derivedExclusionPairs` em engine/balance.ts), nunca aqui.
+  const [excludedTeammateIds, setExcludedTeammateIds] = useState<string[]>(
+    editingPlayer?.excludedTeammateIds ? [...editingPlayer.excludedTeammateIds] : [],
+  );
+  const [excludeSel, setExcludeSel] = useState('');
+  // Candidatos ao combo: todo o elenco cadastrado, exceto o PRÓPRIO jogador em
+  // edição (auto-exclusão não faz sentido) e quem já está na lista.
+  const excludeCandidates = players.filter(
+    (p) => p.id !== editingPlayer?.id && !excludedTeammateIds.includes(p.id),
+  );
+  const addExcludedTeammate = () => {
+    if (!excludeSel) return;
+    setExcludedTeammateIds((prev) => (prev.includes(excludeSel) ? prev : [...prev, excludeSel]));
+    setExcludeSel('');
+  };
+  const removeExcludedTeammate = (id: string) =>
+    setExcludedTeammateIds((prev) => prev.filter((x) => x !== id));
   const setAttr = (k: AttributeKey, v: number) => setAttributes((prev) => ({ ...prev, [k]: clampAttr(v) }));
 
   const boxToBox = hasEnabledBoxToBox(acceptedPositions);
@@ -178,6 +199,8 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
     positionOverrides,
     positionOrderIndifferent,
     veteran,
+    goodMarker,
+    excludedTeammateIds: excludedTeammateIds.length > 0 ? excludedTeammateIds : undefined,
     handicapPct: editingPlayer?.handicapPct,
   };
   const profile = describePlayerProfile(attributes);
@@ -204,6 +227,8 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
       positionOverrides,
       positionOrderIndifferent,
       veteran,
+      goodMarker,
+      excludedTeammateIds: excludedTeammateIds.length > 0 ? excludedTeammateIds : undefined,
     };
 
     if (editingPlayer) {
@@ -244,6 +269,53 @@ export function PlayerForm({ onClose, editingPlayer }: PlayerFormProps) {
             Veterano
           </label>
           <p className={styles.helpText}>Um dos mais velhos do racha — o balanceador espalha os veteranos igualmente entre os times.</p>
+        </div>
+
+        <div className={styles.checkRow}>
+          <label className="checkbox-group">
+            <input type="checkbox" checked={goodMarker} onChange={e => setGoodMarker(e.target.checked)} />
+            Sabe marcar bem
+          </label>
+          <p className={styles.helpText}>
+            Espalhado igualmente entre os times, igual ao veterano. E quando a conta não fecha exata, o time que
+            ficar com um marcador a menos não leva também um veterano a mais (contando os pivôs).
+          </p>
+        </div>
+
+        <div className="input-group">
+          <label>Não pode jogar com</label>
+          <p className={styles.helpText}>
+            Jogadores que NÃO podem ficar no MESMO time que este (vale nos dois sentidos, mesmo cadastrando só aqui).
+            É uma restrição rígida: nenhuma divisão de times coloca esse par junto — a menos que isso deixe ZERO
+            times possíveis, caso em que a simulação desconsidera essa lista automaticamente pra não travar.
+          </p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select
+              className="input-field" style={{ maxWidth: 220 }}
+              value={excludeSel} onChange={(e) => setExcludeSel(e.target.value)}
+            >
+              <option value="">Selecionar jogador...</option>
+              {excludeCandidates.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <button type="button" className="btn-secondary" disabled={!excludeSel} onClick={addExcludedTeammate}>
+              Adicionar
+            </button>
+          </div>
+          {excludedTeammateIds.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {excludedTeammateIds.map((id) => (
+                <span key={id} className="chip chip-accent" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                  {players.find((p) => p.id === id)?.name ?? '?'}
+                  <button
+                    type="button" onClick={() => removeExcludedTeammate(id)}
+                    style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 700 }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="input-group">

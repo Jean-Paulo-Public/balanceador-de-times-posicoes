@@ -297,6 +297,78 @@ export function WikiTab() {
           </p>
         </Section>
 
+        <Section title="Sabe marcar bem (distribuição igual + não acumular com veterano)">
+          <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            No cadastro existe também o checkbox <strong>"Sabe marcar bem"</strong>, irmão do "Veterano": é só uma
+            marcação manual, não muda nenhum atributo nem nota (não confundir com o atributo <strong>DEF</strong>,
+            que é nota numérica e entra no cálculo de equilíbrio). Serve unicamente para as duas regras abaixo.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>1) Distribuição igual entre os times</strong> — exatamente a mesma regra do veterano: com{' '}
+            <em>M</em> marcadores ativos e <em>T</em> times, cada time fica com o número mais uniforme possível.
+            Ex.: 3 marcadores em 2 times vira 2 e 1 (nunca 3 e 0); 4 em 2 times vira 2 e 2. Uma divisão que
+            concentra marcação demais num só time é <strong>excluída das opções</strong>. A conta é feita na
+            formação dos times (elenco completo: goleiro reservado, os 6 de linha e o banco), não jogo a jogo.
+            <strong> Aqui NÃO existe a exceção do pivô</strong> que vale para veteranos: aquela exceção é sobre
+            carga física (pivô não corre o campo), e marcar bem é habilidade que o time leva junto em qualquer
+            posição — então todo marcador conta.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>2) Não acumular os dois ônus no mesmo time</strong> — quando a divisão de marcadores não fecha
+            exata, algum time fica com <strong>um marcador a menos</strong>. Esse time <strong>não pode</strong> ser
+            também um dos que ficam com <strong>um veterano a mais</strong> (contagem de veteranos aqui inclui os
+            pivôs, sem nenhuma exceção). Ou seja: quem levar o lado ruim de um arredondamento não leva o lado ruim
+            do outro. Ex.: 3 marcadores e 3 veteranos em 2 times — o time com 1 marcador precisa ficar com 1
+            veterano, e o time com 2 marcadores fica com os 2 veteranos. Uma divisão que empilha os dois no mesmo
+            time é excluída, e se nenhuma sobrar o app bloqueia a simulação explicando com os números do elenco.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Escape: "Desconsiderar quem marca bem"</strong> (checkbox na tela de Simular Partidas,
+            desmarcado por padrão e que NÃO fica salvo). Marcado, as DUAS regras acima deixam de valer. A regra 2
+            também cai quando "Desconsiderar veteranos" está marcado — ela cruza os dois conceitos, então basta
+            desligar um dos lados.
+          </p>
+        </Section>
+
+        <Section title="Não pode jogar com (exclusão do cadastro)">
+          <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            No cadastro de cada jogador existe a lista <strong>"Não pode jogar com"</strong> — você escolhe outros
+            jogadores do elenco com quem ele NÃO pode ficar no mesmo time. Diferente do "Veterano" e do "Sabe marcar
+            bem" (que são um checkbox), aqui você monta uma lista de nomes.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Vale nos dois sentidos, mesmo cadastrando só de um lado.</strong> Se você marcar no cadastro do
+            Fulano que ele não joga com o Ciclano, o Ciclano também não joga com o Fulano — não precisa cadastrar
+            duas vezes. Um nome que aponta para um jogador removido ou inativo simplesmente não conta.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Não confunda com "Manter separados"</strong> (o filtro da tela de Simular Partidas, logo
+            abaixo). Os dois parecem a mesma coisa, mas são bem diferentes:
+          </p>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <li><strong>"Manter separados"</strong> é uma configuração da PELADA DA SEMANA (você escolhe na hora de
+              simular, some quando reabre o app) e é uma preferência SUAVE: o balanceador tenta separar, mas se
+              isso custar equilíbrio demais, o par pode acabar junto mesmo assim — e a tela avisa quando isso
+              acontece.</li>
+            <li><strong>"Não pode jogar com"</strong> é uma configuração do CADASTRO do jogador (fica salva, faz
+              parte de quem ele é) e é uma restrição RÍGIDA: nenhuma divisão de times que coloca esse par junto é
+              nem considerada como opção.</li>
+          </ul>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            <strong>Só existe uma saída quando a restrição rígida travaria tudo.</strong> Se, respeitando todas as
+            exclusões cadastradas, não sobrar NENHUMA divisão de times possível, o app <strong>não bloqueia a
+            simulação</strong> — ele automaticamente desconsidera a lista de exclusão inteira e tenta de novo, dessa
+            vez sem essa restrição. Você não precisa fazer nada: é automático. Quando isso acontece, aparece um
+            aviso amarelo acima dos times avisando que a lista foi desconsiderada, e dizendo quais pares
+            especificamente acabaram no mesmo time, se algum ficou.
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: '0.88rem', lineHeight: 1.6 }}>
+            As demais regras rígidas (veteranos, quem marca bem, atrasados, banco, posição) continuam valendo
+            normalmente mesmo quando a lista de exclusão precisa ser desconsiderada — o fallback automático desliga
+            SÓ essa lista, nunca as outras.
+          </p>
+        </Section>
+
         <Section title="Não jogará os primeiros jogos (atrasados)">
           <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.6 }}>
             Na tela de Simular Partidas, logo abaixo de "Manter separados", existe o filtro <strong>"Não jogará os primeiros jogos"</strong> — serve para marcar quem chega atrasado no dia (saiu do trabalho, trânsito, qualquer coisa).

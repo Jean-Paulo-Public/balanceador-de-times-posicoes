@@ -94,6 +94,57 @@ export interface Player {
    * nenhuma restrição de veterano).
    */
   veteran?: boolean;
+  /**
+   * "Sabe marcar bem" — marcação manual e cosmética, MESMO PADRÃO de `veteran`
+   * (campo booleano opcional, sem afetar atributos/OVR/capacidade de posição;
+   * não confundir com o atributo DEF, que é nota numérica e entra no custo).
+   * Alimenta duas regras HARD (ambas em engine/balance.ts):
+   *
+   *  1. DISTRIBUIÇÃO (`goodMarkerDistributionBroken`), idêntica à de veteranos
+   *     mas SEM a exceção do pivô-only (marcar não tem relação com posição):
+   *     com `M` marcadores ativos e `T` times, cada divisão candidata só é
+   *     aceita se cada time ficar com entre `floor(M/T)` e `ceil(M/T)`.
+   *  2. NÃO-ACÚMULO com veteranos (`markerVeteranStackingBroken`): quando a
+   *     divisão de marcadores não fecha exata, o time que fica com marcador A
+   *     MENOS não pode ser também um time com veterano A MAIS (contagem BRUTA
+   *     de veteranos, INCLUINDO os pivô-only). Ou seja: os dois ônus nunca
+   *     caem no mesmo time.
+   *
+   * Ausente/`false` = jogador não entra em nenhuma das duas contas.
+   */
+  goodMarker?: boolean;
+  /**
+   * "Não pode jogar com" — lista de IDS de outros jogadores do CADASTRO com
+   * quem este jogador NÃO pode ficar no mesmo time (pedido literal do dono).
+   * MESMO PADRÃO estrutural de `veteran`/`goodMarker` (campo opcional que não
+   * mexe em atributo/OVR/capacidade de posição) mas guarda uma lista de ids,
+   * não um booleano.
+   *
+   * SIMÉTRICO POR DERIVAÇÃO, não por gravação: cadastrar a exclusão só NESTE
+   * jogador já vale nos dois sentidos (se A exclui B, B também não joga com
+   * A) — mas isso é resolvido pelo MOTOR (`derivedExclusionPairs` em
+   * engine/balance.ts), lendo o elenco ativo inteiro, nunca gravando o id
+   * espelhado no outro jogador. Gravar nos dois lados criaria dado duplicado
+   * que pode dessincronizar (ex.: remover de um lado e esquecer do outro);
+   * derivar no motor elimina esse risco por construção.
+   *
+   * Regra HARD no balanceador (ver `exclusionPairBroken` em engine/balance.ts)
+   * — bem diferente de `separatePairs` (config da tela de Simular Partidas,
+   * "Manter separados"): aquela é SOFT (só penaliza o custo, o par pode ainda
+   * assim acabar junto) e configurada na hora, pela pelada da semana; esta é
+   * HARD (uma divisão que junta o par é EXCLUÍDA das candidatas) e vem do
+   * CADASTRO do jogador, pensada pra incompatibilidades permanentes.
+   *
+   * FALLBACK AUTOMÁTICO (pedido explícito do dono): se, com esta lista
+   * valendo, NENHUMA divisão sobrar, o balanceador desliga a regra SOZINHO e
+   * refaz a busca sem ela — nunca bloqueia a simulação com uma mensagem de
+   * inviabilidade por causa disso (ver `BalanceRunReport.exclusionsIgnored`/
+   * `BalanceResult.excludedPairsViolations`).
+   *
+   * Um id que aponta pra jogador removido/inativo simplesmente não conta.
+   * Ausente/lista vazia = sem restrição (comportamento de hoje).
+   */
+  excludedTeammateIds?: string[];
 }
 
 export interface TeamSlotPlayer {

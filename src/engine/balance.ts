@@ -474,6 +474,117 @@ export const veteranInfeasibilityMessage = (totalVeterans: number, numTeams: num
 };
 
 // ---------------------------------------------------------------------------
+// Regra de distribuição de QUEM MARCA BEM (própria — ver `goodMarker` em
+// domain/types.ts) + regra de NÃO-ACÚMULO com veteranos
+// ---------------------------------------------------------------------------
+
+/**
+ * Jogadores marcados "sabe marcar bem" neste time — ELENCO COMPLETO (goleiro
+ * reservado + 6 de linha + banco), exatamente como `veteransOf`: a conta é
+ * feita UMA VEZ na FORMAÇÃO dos times, nunca dentro do rodízio de jogos.
+ */
+const goodMarkersOf = (t: DivTeam): RP[] =>
+  [t.gk, ...t.line, ...t.bench].filter((r): r is RP => !!r && !!r.player.goodMarker);
+
+/**
+ * Sinal de invalidez por DISTRIBUIÇÃO DE QUEM MARCA BEM — regra HARD, cópia
+ * fiel de `veteranDistributionBroken` (floor/ceil sobre o elenco completo,
+ * divisão EXCLUÍDA e não penalizada no custo) com UMA diferença deliberada:
+ * NÃO existe exceção de "pivô-only" aqui. A exceção do veterano-pivô existe
+ * porque pivô não corre o campo, o que é um argumento sobre CARGA FÍSICA; já
+ * "sabe marcar bem" é uma habilidade defensiva que o time leva junto
+ * independentemente da posição em que o cara joga, então todo marcador conta.
+ */
+// Exportado só pra teste (mesmo motivo de `veteranDistributionBroken`).
+export const goodMarkerDistributionBroken = (teams: DivTeam[]): boolean => {
+  const counts = teams.map((t) => goodMarkersOf(t).length);
+  const total = counts.reduce((a, b) => a + b, 0);
+  if (total === 0) return false; // ninguém marcado = sem restrição
+  const t = teams.length;
+  const lo = Math.floor(total / t);
+  const hi = Math.ceil(total / t);
+  return counts.some((c) => c < lo || c > hi);
+};
+
+/**
+ * Sinal de invalidez por ACÚMULO DE ÔNUS (pedido explícito do dono) — regra
+ * HARD que CRUZA as duas marcações: quando a divisão de marcadores não fecha
+ * exata (alguém precisa ficar com um a menos), o time que leva o "a menos" de
+ * quem marca bem NÃO pode ser também um time que leva "a mais" de veterano.
+ * Sem isso, um mesmo time podia acumular os dois lados ruins do arredondamento
+ * (menos marcação E mais veterano) enquanto outro levava os dois bons.
+ *
+ * Formalização, sem depender de `%` (robusta mesmo quando a regra de veteranos
+ * está desligada ou quando a exceção do pivô-only deixou as contagens BRUTAS
+ * fora de floor/ceil):
+ *  - time "com marcador a menos" = `markers[i] < max(markers)`;
+ *  - time "com veterano a mais"  = `vets[i] > min(vets)`;
+ *  - viola se ALGUM time é as duas coisas ao mesmo tempo.
+ * Com marcadores igualmente divididos ninguém está "a menos" (nenhum `i`
+ * satisfaz a primeira condição) e a regra não restringe nada — idem com
+ * veteranos igualmente divididos.
+ *
+ * A contagem de veteranos aqui é a BRUTA (`veteransOf`), INCLUINDO os
+ * pivô-only — pedido literal do dono ("incluindo os pivôs"). É de propósito
+ * diferente de `effectiveVeteranCount`: aquela exclusão existe só pra decidir
+ * QUEM a distribuição de veteranos precisa espalhar; nesta regra o que importa
+ * é quantos veteranos o time de fato carrega.
+ */
+// Exportado só pra teste (mesmo motivo de `veteranDistributionBroken`).
+export const markerVeteranStackingBroken = (teams: DivTeam[]): boolean => {
+  const markers = teams.map((t) => goodMarkersOf(t).length);
+  const vets = teams.map((t) => veteransOf(t).length);
+  const maxMarkers = Math.max(...markers);
+  const minVets = Math.min(...vets);
+  return teams.some((_, i) => markers[i] < maxMarkers && vets[i] > minVets);
+};
+
+/**
+ * Mensagem de bloqueio quando NENHUMA divisão candidata cumpre a distribuição
+ * equilibrada de quem marca bem. Cita os NÚMEROS REAIS, no mesmo formato de
+ * `veteranInfeasibilityMessage`.
+ */
+// Exportado só pra teste — verificar o texto sem duplicá-lo.
+export const goodMarkerInfeasibilityMessage = (totalMarkers: number, numTeams: number): string => {
+  const lo = Math.floor(totalMarkers / numTeams);
+  const hi = Math.ceil(totalMarkers / numTeams);
+  const distribution = lo === hi
+    ? `exatamente ${lo} por time`
+    : `entre ${lo} e ${hi} por time`;
+  const cause =
+    `há ${totalMarkers} jogador(es) que marca(m) bem para ${numTeams} times — a distribuição exigida é ` +
+    `${distribution}, e nenhuma divisão candidata conseguiu cumprir isso sem concentrar marcação demais num time.`;
+  const options = [
+    'marque a opção "Desconsiderar quem marca bem"',
+    'mude a quantidade de times',
+    'revise quem está marcado como "Sabe marcar bem" no cadastro',
+  ];
+  return `Nenhuma divisão respeita a distribuição equilibrada de quem marca bem: ${cause} Saídas: ${joinNames(options)}.`;
+};
+
+/**
+ * Mensagem de bloqueio quando toda divisão candidata que respeitava as duas
+ * distribuições ainda assim empilhava os dois ônus no mesmo time (ver
+ * `markerVeteranStackingBroken`).
+ */
+// Exportado só pra teste — verificar o texto sem duplicá-lo.
+export const markerVeteranStackingMessage = (
+  totalMarkers: number, totalVeterans: number, numTeams: number,
+): string => {
+  const cause =
+    `com ${totalMarkers} jogador(es) que marca(m) bem e ${totalVeterans} veterano(s) (contando os pivôs) para ` +
+    `${numTeams} times, nenhuma das contas fecha exata — e em toda divisão candidata o time que ficou com um ` +
+    `marcador a menos era também o que ficava com um veterano a mais, acumulando os dois ônus no mesmo time.`;
+  const options = [
+    'marque a opção "Desconsiderar quem marca bem"',
+    'marque a opção "Desconsiderar veteranos"',
+    'mude a quantidade de times',
+    'revise quem está marcado como veterano ou como "Sabe marcar bem" no cadastro',
+  ];
+  return `Nenhuma divisão evita acumular "menos marcação" e "mais veterano" no mesmo time: ${cause} Saídas: ${joinNames(options)}.`;
+};
+
+// ---------------------------------------------------------------------------
 // Regra de distribuição de ATRASADOS (própria — ver `LateArrival` em
 // domain/types.ts) — MESMA arquitetura da regra de veteranos acima (sinal por
 // divisão, checado sobre o ELENCO COMPLETO, UMA vez por divisão candidata,
@@ -541,6 +652,79 @@ const teamOfIdMap = (teams: DivTeam[]): Map<string, number> => {
   return m;
 };
 
+// ---------------------------------------------------------------------------
+// Regra de EXCLUSÃO DE PARES (própria — ver `excludedTeammateIds` em
+// domain/types.ts) — pedido literal do dono: "quando configurada tal jogador
+// não vai poder jogar com outro jogador". MESMA arquitetura hard das quatro
+// regras acima (sinal por divisão, elenco COMPLETO, filtro no laço + busca
+// local + revalidação), com DUAS diferenças deliberadas:
+//
+//  1. A origem do dado é o CADASTRO do jogador (`Player.excludedTeammateIds`),
+//     não uma config da pelada da semana — por isso não existe checkbox de
+//     escape na tela de Simular Partidas, nem opção em `BalanceOptions`: a
+//     regra fica sempre ativa quando o cadastro tem alguma exclusão relevante
+//     no elenco ativo desta simulação.
+//  2. NÃO É PARECIDA com `separatePairs`/`SEPARATION_PENALTY` (a opção "Manter
+//     separados" da tela de Simular Partidas, configurada ali, na hora):
+//     aquela é SOFT — só soma uma penalidade ao custo (`divisionCost`) e o par
+//     pode acabar junto se separar custar caro demais (reportado em
+//     `separationViolations`). Esta é HARD — uma divisão que junta um par
+//     excluído é EXCLUÍDA das candidatas, nunca só penalizada — E TEM
+//     FALLBACK AUTOMÁTICO: se, com a regra valendo, `balanceTeamsOptions` não
+//     sobrar NENHUM resultado, a regra é desligada e a busca inteira é refeita
+//     sem ela (ver o fallback dentro de `balanceTeamsOptions`) — o usuário
+//     nunca vê uma mensagem de "impossível formar times" por causa da lista de
+//     exclusão; no pior caso, um par excluído acaba junto e a UI avisa (ver
+//     `BalanceResult.excludedPairsViolations`/`BalanceRunReport.exclusionsIgnored`).
+// ---------------------------------------------------------------------------
+
+/**
+ * Deriva o conjunto de pares de exclusão a partir do CADASTRO
+ * (`Player.excludedTeammateIds`) — SIMÉTRICO por construção: basta um dos dois
+ * lados ter cadastrado o outro pra o par valer nos DOIS SENTIDOS (decisão de
+ * design: derivar aqui em vez de gravar nos dois jogadores ao salvar o form,
+ * porque gravar nos dois lados criaria dado que pode dessincronizar — ex.:
+ * remover a exclusão de um lado sem lembrar de tirar do outro). Um id que
+ * aponta pra jogador removido/inativo simplesmente NÃO CONTA: só ids
+ * presentes em `activePlayers` formam par. Dedup: o mesmo par nunca aparece
+ * duas vezes, mesmo que os dois jogadores tenham cadastrado a exclusão cada
+ * um do seu lado.
+ */
+export const derivedExclusionPairs = (activePlayers: Player[]): [string, string][] => {
+  const activeIds = new Set(activePlayers.map((p) => p.id));
+  const seen = new Set<string>();
+  const pairs: [string, string][] = [];
+  for (const p of activePlayers) {
+    for (const otherId of p.excludedTeammateIds ?? []) {
+      if (otherId === p.id || !activeIds.has(otherId)) continue; // auto-exclusão ou jogador fora do elenco ativo: não conta
+      const [a, b] = p.id < otherId ? [p.id, otherId] : [otherId, p.id];
+      const key = `${a}|${b}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push([a, b]);
+    }
+  }
+  return pairs;
+};
+
+/**
+ * Sinal de invalidez por PAR EXCLUÍDO NO CADASTRO — regra HARD, mesma
+ * arquitetura de `veteranDistributionBroken`/`lateArrivalDistributionBroken`
+ * (elenco COMPLETO, checada uma vez por divisão). `pairs` já vem SIMÉTRICO e
+ * deduplicado (ver `derivedExclusionPairs`) — aqui só resta olhar se algum dos
+ * pares caiu no MESMO time.
+ */
+// Exportado só pra teste (mesmo motivo de `veteranDistributionBroken`).
+export const exclusionPairBroken = (teams: DivTeam[], pairs: [string, string][]): boolean => {
+  if (pairs.length === 0) return false;
+  const teamOf = teamOfIdMap(teams);
+  return pairs.some(([a, b]) => {
+    const ta = teamOf.get(a);
+    const tb = teamOf.get(b);
+    return ta != null && tb != null && ta === tb;
+  });
+};
+
 /**
  * Custo de uma divisão: variância ponderada das métricas (médias dos jogos do
  * rodízio) entre os times + penalidades. O nº de jogos vem de
@@ -580,7 +764,9 @@ const divisionCost = (
 
 const localSearch = (
   teams: DivTeam[], neverGk: boolean, allowTwoConsecutiveBench: boolean, separate: [string, string][],
-  respectVeteranDistribution: boolean, cache?: FormationCache, maxIter = 60,
+  respectVeteranDistribution: boolean, respectGoodMarkerDistribution: boolean,
+  respectMarkerVeteranStacking: boolean, respectExclusions: boolean, exclusionPairs: [string, string][],
+  cache?: FormationCache, maxIter = 60,
   lateArrivals?: ReadonlyMap<string, number>,
 ): void => {
   let cur = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivals);
@@ -596,20 +782,29 @@ const localSearch = (
             teams[i].line[a] = B;
             teams[j].line[b] = A;
             // A troca de identidade entre times NÃO é invariante pra
-            // distribuição de veteranos NEM pra de atrasados (diferente de
-            // `benchRuleBroken`, que só depende do TAMANHO de linha/banco):
-            // mover um veterano/atrasado de time pode tirar uma divisão que
-            // passou no filtro inicial de volta pra um estado que viola a
-            // regra. A busca local NUNCA pode sair de um estado válido pra um
-            // inválido — por isso qualquer troca que resulte em violação de
-            // QUALQUER uma das duas é descartada aqui, ANTES de sequer
-            // comparar custo (as duas são hard, não entram no custo).
+            // distribuição de veteranos, nem pra de quem marca bem, nem pro
+            // não-acúmulo entre as duas, nem pra de atrasados, nem pra a
+            // exclusão de pares do cadastro (diferente de `benchRuleBroken`,
+            // que só depende do TAMANHO de linha/banco): mover um
+            // veterano/marcador/atrasado/par-excluído de time pode tirar uma
+            // divisão que passou no filtro inicial de volta pra um estado que
+            // viola a regra. A busca local NUNCA pode sair de um estado válido
+            // pra um inválido — por isso qualquer troca que resulte em violação
+            // de QUALQUER uma das cinco é descartada aqui, ANTES de sequer
+            // comparar custo (todas são hard, nenhuma entra no custo).
             const violatesVeteranRule = respectVeteranDistribution && veteranDistributionBroken(teams);
+            const violatesMarkerRule = respectGoodMarkerDistribution && goodMarkerDistributionBroken(teams);
+            const violatesStackingRule = respectMarkerVeteranStacking && markerVeteranStackingBroken(teams);
             const violatesLateArrivalRule = !!lateArrivals?.size && lateArrivalDistributionBroken(teams, lateArrivals);
+            const violatesExclusionRule =
+              respectExclusions && exclusionPairs.length > 0 && exclusionPairBroken(teams, exclusionPairs);
             const nc = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivals);
             teams[i].line[a] = A; // desfaz
             teams[j].line[b] = B;
-            if (violatesVeteranRule || violatesLateArrivalRule) continue;
+            if (
+              violatesVeteranRule || violatesMarkerRule || violatesStackingRule
+              || violatesLateArrivalRule || violatesExclusionRule
+            ) continue;
             const delta = nc - cur;
             if (delta < bestDelta) { bestDelta = delta; best = [i, a, j, b]; }
           }
@@ -704,6 +899,18 @@ export interface BalanceResult {
   gaps: { def: number; off: number; recuo: number; pressao: number; geral: number; cobertura: number | null };
   /** Pares "manter separados" que não deu pra separar sem desequilibrar (nomes "A & B"). */
   separationViolations: string[];
+  /**
+   * Pares EXCLUÍDOS NO CADASTRO (`Player.excludedTeammateIds`) que acabaram no
+   * MESMO time NESTE resultado específico (nomes "A & B", mesmo formato de
+   * `separationViolations`) — NÃO confundir os dois: aquele é sobre a config
+   * SOFT da tela de Simular Partidas, este é sobre a regra HARD do cadastro.
+   * Normalmente vazio — só fica preenchido quando o FALLBACK AUTOMÁTICO
+   * desligou a regra (ver `exclusionPairBroken`/
+   * `BalanceRunReport.exclusionsIgnored`): mesmo com o fallback ligado, a
+   * busca local ainda tenta evitar juntar pares excluídos quando o custo
+   * permite, então nem todo par excluído necessariamente aparece aqui.
+   */
+  excludedPairsViolations: string[];
   /** Avisos da fila do goleiro (Jogo 1 sem atacante) — um por time que precisou ceder a regra. */
   goalkeeperWarnings: string[];
 }
@@ -772,6 +979,19 @@ export interface BalanceOptions {
    */
   ignoreVeteranDistribution?: boolean;
   /**
+   * Checkbox do dono "Desconsiderar quem marca bem" (default false, NÃO
+   * persistido — mesmo padrão de `ignoreVeteranDistribution`): quando ligado,
+   * a distribuição de marcadores (`goodMarkerDistributionBroken`) E a regra de
+   * não-acúmulo com veteranos (`markerVeteranStackingBroken`) são IGNORADAS —
+   * as duas dependem da marcação "sabe marcar bem", então desligar o conceito
+   * desliga as duas.
+   *
+   * A regra de não-acúmulo também cai quando `ignoreVeteranDistribution` está
+   * ligado: ela cruza os dois conceitos, e desligar qualquer um dos lados
+   * significa que o usuário não quer aquele lado restringindo nada.
+   */
+  ignoreGoodMarkerDistribution?: boolean;
+  /**
    * Filtro "Não jogará os primeiros jogos" (ver `LateArrival` em
    * domain/types.ts, persistido em `usePlayerStore` no mesmo padrão de
    * `separatePairs`): cada entrada marca um jogador AUSENTE nos primeiros
@@ -819,6 +1039,25 @@ export interface BalanceRunReport {
   veteranInfeasibility: { message: string } | null;
   /**
    * Motivo pelo qual TODAS as divisões candidatas foram EXCLUÍDAS por não
+   * cumprir a distribuição equilibrada de QUEM MARCA BEM
+   * (`goodMarkerDistributionBroken`) — null quando não houve exclusão por esse
+   * motivo, e sempre null quando "Desconsiderar quem marca bem" está ligado
+   * (a regra nem é checada). Conceito irmão de `veteranInfeasibility`, com a
+   * mesma arquitetura (composição do ELENCO, uma checagem por divisão, fora do
+   * rodízio de jogos).
+   */
+  goodMarkerInfeasibility: { message: string } | null;
+  /**
+   * Motivo pelo qual TODAS as divisões candidatas foram EXCLUÍDAS por
+   * acumularem "um marcador a menos" e "um veterano a mais" no MESMO time
+   * (`markerVeteranStackingBroken`) — null quando não houve exclusão por esse
+   * motivo. Distinto de `veteranInfeasibility` e de `goodMarkerInfeasibility`:
+   * aqui cada distribuição, isolada, estava correta; o que falhou foi o
+   * CRUZAMENTO das duas.
+   */
+  markerVeteranStackingInfeasibility: { message: string } | null;
+  /**
+   * Motivo pelo qual TODAS as divisões candidatas foram EXCLUÍDAS por não
    * cumprir a distribuição equilibrada de ATRASADOS (`lateArrivalDistributionBroken`)
    * — null quando não houve exclusão por esse motivo. É um QUARTO conceito de
    * invalidez, distinto dos outros três (`feasibility`/posição,
@@ -829,6 +1068,19 @@ export interface BalanceRunReport {
    * ATRASADO, verificada uma vez por divisão, sem envolver o rodízio de jogos.
    */
   lateArrivalInfeasibility: { message: string } | null;
+  /**
+   * `true` quando o FALLBACK AUTOMÁTICO da lista de exclusão do cadastro
+   * (`Player.excludedTeammateIds`, ver `derivedExclusionPairs`/
+   * `exclusionPairBroken` em engine/balance.ts) teve que entrar em ação: com a
+   * regra valendo, a passagem inicial não sobrou NENHUM resultado, então a
+   * busca inteira foi refeita com a regra DESLIGADA. Diferente das cinco
+   * infactibilidades acima, isto NUNCA é motivo de bloqueio — a lista de
+   * exclusão se auto-desliga em vez de travar a simulação (pedido literal do
+   * dono). Quando `true`, o usuário precisa ser avisado (ver
+   * `BalanceResult.excludedPairsViolations` pra saber QUAIS pares específicos
+   * ficaram juntos em cada resultado exibido).
+   */
+  exclusionsIgnored: boolean;
 }
 
 /** Último relatório de execução (candidatos avaliados, tempo, factibilidade) — Fase 6/5. */
@@ -905,6 +1157,13 @@ export const balanceTeamsOptions = (
   const maxOptions = options.maxOptions ?? 6;
   const allowTwoConsecutiveBench = options.allowTwoConsecutiveBench ?? false;
   const ignoreVeteranDistribution = options.ignoreVeteranDistribution ?? false;
+  const ignoreGoodMarkerDistribution = options.ignoreGoodMarkerDistribution ?? false;
+  // As três regras de composição de elenco ligadas às marcações do cadastro,
+  // resolvidas UMA vez aqui pra o filtro inicial, a busca local e a revalidação
+  // final usarem exatamente os mesmos flags (ver `BalanceOptions`).
+  const respectVeterans = !ignoreVeteranDistribution;
+  const respectMarkers = !ignoreGoodMarkerDistribution;
+  const respectStacking = respectMarkers && respectVeterans;
   const active = players.filter((p) => p.active);
 
   // Rodízio da simulação (9 com 2 times, 6 com 3+) — usado tanto pro custo
@@ -912,12 +1171,20 @@ export const balanceTeamsOptions = (
   const totalGamesForRun = gamesForTeamCount(numTeams);
   const lateArrivalsMap = clampLateArrivals(options.lateArrivals, totalGamesForRun);
 
+  // Pares de EXCLUSÃO DO CADASTRO (ver `Player.excludedTeammateIds` e o bloco
+  // de comentário logo acima de `derivedExclusionPairs`) — SEM opção em
+  // `BalanceOptions`: não é config da pelada, é sempre derivada do cadastro do
+  // elenco ATIVO desta simulação. Calculado UMA vez aqui pra alimentar as duas
+  // passagens de `runPass` abaixo (com e sem a regra).
+  const exclusionPairs = derivedExclusionPairs(active);
+
   // Fase 5: checagem de factibilidade ANTES de tentar montar os times.
   const feasibility = checkPositionFeasibility(active, numTeams);
   if (!feasibility.feasible) {
     lastRunReport = {
       feasibility, candidatesEvaluated: 0, elapsedMs: 0,
       benchInfeasibility: null, veteranInfeasibility: null, lateArrivalInfeasibility: null,
+      goodMarkerInfeasibility: null, markerVeteranStackingInfeasibility: null, exclusionsIgnored: false,
     };
     return [];
   }
@@ -956,120 +1223,207 @@ export const balanceTeamsOptions = (
         feasibility, candidatesEvaluated: 0,
         elapsedMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0,
         benchInfeasibility: null, veteranInfeasibility: null, lateArrivalInfeasibility: null,
+        goodMarkerInfeasibility: null, markerVeteranStackingInfeasibility: null, exclusionsIgnored: false,
       };
       return [];
     }
     divisions.push(basic);
   }
 
-  // Custo + checagem da regra do banco (Fase 6+, NOVA REGRA): uma divisão cuja
-  // rotação de banco não cumpre "ninguém repete" (nem com a exceção, se
-  // ligada) — o que TAMBÉM cobre faltar gente pra fechar a linha por causa de
-  // atrasados ainda ausentes (`lineShortfall`, ver rotation.ts) — é EXCLUÍDA
-  // aqui, antes mesmo de virar semente pra busca local. `benchRuleBroken` é
-  // invariante a trocas de jogadores de LINHA entre times (busca local só
-  // troca identidade, nunca o TAMANHO de linha/banco/goleiro de cada time) —
-  // por isso é seguro e mais barato decidir isso JÁ na pontuação inicial, sem
-  // precisar recalcular depois da busca local.
   interface BenchIssue { teamName: string; n: number; b: number; lineShortfall: TeamMetrics['lineShortfall'] }
-  let firstBenchIssue: BenchIssue | null = null;
-  // Distribuição de veteranos (regra própria — ver `veteranDistributionBroken`
-  // acima): checada na COMPOSIÇÃO DO TIME (o `DivTeam` já montado), nunca
-  // dentro do rodízio de jogos. `totalVeterans` é igual em toda divisão (é
-  // sempre o elenco ATIVO inteiro sendo repartido), então guardar o valor da
-  // PRIMEIRA divisão que falhar já basta pra mensagem final.
-  let firstVeteranIssue: number | null = null;
-  // Distribuição de ATRASADOS (regra própria — ver `lateArrivalDistributionBroken`
-  // acima): MESMA arquitetura da de veteranos, checada JUNTO (antes do custo
-  // e da rotação de banco) — sem checkbox de escape.
-  let firstLateArrivalIssue: number | null = null;
-  const feasibleDivisions: { teams: DivTeam[]; cost: number }[] = [];
-  for (const teams of divisions) {
-    if (!ignoreVeteranDistribution && veteranDistributionBroken(teams)) {
-      if (firstVeteranIssue === null) {
-        firstVeteranIssue = effectiveVeteranCount(teams);
-      }
-      continue; // divisão excluída: concentra veteranos demais num time
-    }
-    if (lateArrivalsMap.size > 0 && lateArrivalDistributionBroken(teams, lateArrivalsMap)) {
-      if (firstLateArrivalIssue === null) {
-        firstLateArrivalIssue = teams.reduce((s, t) => s + lateArrivalsOf(t, lateArrivalsMap).length, 0);
-      }
-      continue; // divisão excluída: concentra atrasados demais num time
-    }
-    const games = gamesForTeamCount(teams.length);
-    const metrics = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, games, lateArrivalsMap));
-    const brokenIdx = metrics.findIndex((m) => m.benchRuleBroken);
-    if (brokenIdx !== -1) {
-      if (firstBenchIssue === null) {
-        // `teamName` aqui já é o RÓTULO DE EXIBIÇÃO (não o nome interno) — só é
-        // usado pra compor a mensagem mostrada ao usuário (`benchInfeasibilityMessage`
-        // abaixo); a lógica de balanceamento nunca lê `BenchIssue.teamName`.
-        firstBenchIssue = {
-          teamName: teamDisplayLabel(teams[brokenIdx]),
-          n: metrics[brokenIdx].benchOutfielders,
-          b: metrics[brokenIdx].benchSlots,
-          lineShortfall: metrics[brokenIdx].lineShortfall,
-        };
-      }
-      continue; // divisão excluída: não cumpre a regra do banco (nem com a exceção, se ligada) ou não fecha a linha por atraso
-    }
-    const cost = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivalsMap);
-    feasibleDivisions.push({ teams, cost });
+  interface PassResult {
+    out: BalanceResult[];
+    firstVeteranIssue: number | null;
+    firstGoodMarkerIssue: number | null;
+    firstStackingIssue: { markers: number; veterans: number } | null;
+    firstLateArrivalIssue: number | null;
+    firstBenchIssue: BenchIssue | null;
   }
-  const scored = feasibleDivisions.sort((a, b) => a.cost - b.cost);
+  const totalGoodMarkers = active.filter((p) => p.goodMarker).length;
+  const totalRawVeterans = active.filter((p) => p.veteran).length;
 
-  const seeds: DivTeam[][] = [];
-  const preSeen = new Set<string>();
-  for (const { teams } of scored) {
-    if (seeds.length >= maxOptions) break;
-    const sig = membershipSig(teams);
-    if (preSeen.has(sig)) continue;
-    preSeen.add(sig);
-    seeds.push(teams);
-  }
+  /**
+   * Uma passagem completa (filtro das divisões candidatas + busca local +
+   * revalidação + finalize) — extraída pra função reutilizável porque a regra
+   * de exclusão do cadastro precisa rodar a MESMA passagem DUAS vezes quando a
+   * primeira não sobra nenhum resultado: uma vez respeitando `exclusionPairs`
+   * (`respectExclusions = true`) e, se necessário, outra vez SEM ela
+   * (`respectExclusions = false` — o FALLBACK AUTOMÁTICO pedido pelo dono, ver
+   * mais abaixo). As outras quatro regras hard (veteranos, marcadores,
+   * acúmulo, atrasados) e a regra de banco continuam valendo IGUAL nas duas
+   * passagens — o fallback desliga SÓ a exclusão, nunca as demais.
+   */
+  const runPass = (respectExclusions: boolean): PassResult => {
+    // Custo + checagem da regra do banco (Fase 6+, NOVA REGRA): uma divisão cuja
+    // rotação de banco não cumpre "ninguém repete" (nem com a exceção, se
+    // ligada) — o que TAMBÉM cobre faltar gente pra fechar a linha por causa de
+    // atrasados ainda ausentes (`lineShortfall`, ver rotation.ts) — é EXCLUÍDA
+    // aqui, antes mesmo de virar semente pra busca local. `benchRuleBroken` é
+    // invariante a trocas de jogadores de LINHA entre times (busca local só
+    // troca identidade, nunca o TAMANHO de linha/banco/goleiro de cada time) —
+    // por isso é seguro e mais barato decidir isso JÁ na pontuação inicial, sem
+    // precisar recalcular depois da busca local.
+    let firstBenchIssue: BenchIssue | null = null;
+    // Distribuição de veteranos (regra própria — ver `veteranDistributionBroken`
+    // acima): checada na COMPOSIÇÃO DO TIME (o `DivTeam` já montado), nunca
+    // dentro do rodízio de jogos. `totalVeterans` é igual em toda divisão (é
+    // sempre o elenco ATIVO inteiro sendo repartido), então guardar o valor da
+    // PRIMEIRA divisão que falhar já basta pra mensagem final.
+    let firstVeteranIssue: number | null = null;
+    // Distribuição de QUEM MARCA BEM + não-acúmulo com veteranos (regras próprias
+    // — ver `goodMarkerDistributionBroken`/`markerVeteranStackingBroken` acima):
+    // mesma arquitetura da de veteranos, checadas logo depois dela. Os totais são
+    // iguais em toda divisão (é sempre o elenco ATIVO inteiro sendo repartido),
+    // então guardar os da PRIMEIRA divisão que falhar já basta pra mensagem.
+    let firstGoodMarkerIssue: number | null = null;
+    let firstStackingIssue: { markers: number; veterans: number } | null = null;
+    // Distribuição de ATRASADOS (regra própria — ver `lateArrivalDistributionBroken`
+    // acima): MESMA arquitetura da de veteranos, checada JUNTO (antes do custo
+    // e da rotação de banco) — sem checkbox de escape.
+    let firstLateArrivalIssue: number | null = null;
+    const feasibleDivisions: { teams: DivTeam[]; cost: number }[] = [];
+    for (const teams of divisions) {
+      if (respectVeterans && veteranDistributionBroken(teams)) {
+        if (firstVeteranIssue === null) {
+          firstVeteranIssue = effectiveVeteranCount(teams);
+        }
+        continue; // divisão excluída: concentra veteranos demais num time
+      }
+      if (respectMarkers && goodMarkerDistributionBroken(teams)) {
+        if (firstGoodMarkerIssue === null) firstGoodMarkerIssue = totalGoodMarkers;
+        continue; // divisão excluída: concentra marcação demais num time
+      }
+      if (respectStacking && markerVeteranStackingBroken(teams)) {
+        if (firstStackingIssue === null) {
+          firstStackingIssue = { markers: totalGoodMarkers, veterans: totalRawVeterans };
+        }
+        continue; // divisão excluída: mesmo time com marcador a menos E veterano a mais
+      }
+      if (lateArrivalsMap.size > 0 && lateArrivalDistributionBroken(teams, lateArrivalsMap)) {
+        if (firstLateArrivalIssue === null) {
+          firstLateArrivalIssue = teams.reduce((s, t) => s + lateArrivalsOf(t, lateArrivalsMap).length, 0);
+        }
+        continue; // divisão excluída: concentra atrasados demais num time
+      }
+      // Exclusão do cadastro (ver bloco de comentário acima de
+      // `derivedExclusionPairs`): SEM mensagem de bloqueio própria — quando
+      // `respectExclusions` é `false` (passagem de fallback) este filtro nem
+      // roda, então NUNCA é ele quem deixa `out` vazio no relatório final.
+      if (respectExclusions && exclusionPairs.length > 0 && exclusionPairBroken(teams, exclusionPairs)) {
+        continue; // divisão excluída: junta um par marcado como incompatível no cadastro
+      }
+      const games = gamesForTeamCount(teams.length);
+      const metrics = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, games, lateArrivalsMap));
+      const brokenIdx = metrics.findIndex((m) => m.benchRuleBroken);
+      if (brokenIdx !== -1) {
+        if (firstBenchIssue === null) {
+          // `teamName` aqui já é o RÓTULO DE EXIBIÇÃO (não o nome interno) — só é
+          // usado pra compor a mensagem mostrada ao usuário (`benchInfeasibilityMessage`
+          // abaixo); a lógica de balanceamento nunca lê `BenchIssue.teamName`.
+          firstBenchIssue = {
+            teamName: teamDisplayLabel(teams[brokenIdx]),
+            n: metrics[brokenIdx].benchOutfielders,
+            b: metrics[brokenIdx].benchSlots,
+            lineShortfall: metrics[brokenIdx].lineShortfall,
+          };
+        }
+        continue; // divisão excluída: não cumpre a regra do banco (nem com a exceção, se ligada) ou não fecha a linha por atraso
+      }
+      const cost = divisionCost(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivalsMap);
+      feasibleDivisions.push({ teams, cost });
+    }
+    const scored = feasibleDivisions.sort((a, b) => a.cost - b.cost);
 
-  // busca local em cada semente; dedupe pós-busca; finaliza
-  const out: BalanceResult[] = [];
-  const postSeen = new Set<string>();
-  for (const teams of seeds) {
-    localSearch(teams, neverGk, allowTwoConsecutiveBench, separate, !ignoreVeteranDistribution, cache, 60, lateArrivalsMap);
-    // Cinto e suspensório: `localSearch` já nunca troca pra um estado que
-    // viole a distribuição de veteranos/atrasados (ver comentário lá), mas
-    // revalida aqui antes de publicar o resultado — mais barato que um bug
-    // silencioso fazendo uma divisão inválida escapar pra UI.
-    if (!ignoreVeteranDistribution && veteranDistributionBroken(teams)) continue;
-    if (lateArrivalsMap.size > 0 && lateArrivalDistributionBroken(teams, lateArrivalsMap)) continue;
-    const sig = membershipSig(teams);
-    if (postSeen.has(sig)) continue;
-    postSeen.add(sig);
-    out.push(finalize(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivalsMap));
+    const seeds: DivTeam[][] = [];
+    const preSeen = new Set<string>();
+    for (const { teams } of scored) {
+      if (seeds.length >= maxOptions) break;
+      const sig = membershipSig(teams);
+      if (preSeen.has(sig)) continue;
+      preSeen.add(sig);
+      seeds.push(teams);
+    }
+
+    // busca local em cada semente; dedupe pós-busca; finaliza
+    const out: BalanceResult[] = [];
+    const postSeen = new Set<string>();
+    for (const teams of seeds) {
+      localSearch(
+        teams, neverGk, allowTwoConsecutiveBench, separate,
+        respectVeterans, respectMarkers, respectStacking, respectExclusions, exclusionPairs, cache, 60, lateArrivalsMap,
+      );
+      // Cinto e suspensório: `localSearch` já nunca troca pra um estado que
+      // viole a distribuição de veteranos/marcadores/atrasados/exclusão nem o
+      // não-acúmulo entre as duas primeiras (ver comentário lá), mas revalida
+      // aqui antes de publicar o resultado — mais barato que um bug silencioso
+      // fazendo uma divisão inválida escapar pra UI.
+      if (respectVeterans && veteranDistributionBroken(teams)) continue;
+      if (respectMarkers && goodMarkerDistributionBroken(teams)) continue;
+      if (respectStacking && markerVeteranStackingBroken(teams)) continue;
+      if (lateArrivalsMap.size > 0 && lateArrivalDistributionBroken(teams, lateArrivalsMap)) continue;
+      if (respectExclusions && exclusionPairs.length > 0 && exclusionPairBroken(teams, exclusionPairs)) continue;
+      const sig = membershipSig(teams);
+      if (postSeen.has(sig)) continue;
+      postSeen.add(sig);
+      out.push(finalize(teams, neverGk, allowTwoConsecutiveBench, separate, cache, lateArrivalsMap, exclusionPairs));
+    }
+
+    return { out, firstVeteranIssue, firstGoodMarkerIssue, firstStackingIssue, firstLateArrivalIssue, firstBenchIssue };
+  };
+
+  let pass = runPass(true);
+  // FALLBACK AUTOMÁTICO (pedido literal do dono): se, com a exclusão do
+  // cadastro valendo, NENHUM resultado sobrou, refaz a passagem inteira
+  // ignorando só essa regra — nunca bloqueia a simulação por causa dela. Só
+  // vale a pena tentar quando existe de fato algum par de exclusão relevante
+  // no elenco ativo (`exclusionPairs.length > 0`); do contrário a primeira
+  // passagem já é idêntica à segunda e rodar de novo seria desperdício.
+  // Se MESMO SEM a exclusão a segunda passagem continuar vazia, usamos o
+  // relatório DELA (com a regra desligada) pra reportar a causa REAL do
+  // bloqueio — nunca aponta pra exclusão, que já nem estava mais em jogo.
+  let exclusionsIgnored = false;
+  if (pass.out.length === 0 && exclusionPairs.length > 0) {
+    const fallback = runPass(false);
+    exclusionsIgnored = fallback.out.length > 0;
+    pass = fallback;
   }
 
   const elapsedMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
-  const issue: BenchIssue | null = firstBenchIssue;
-  // As três causas de exclusão total são checadas na mesma ordem do filtro
-  // acima (veterano, depois atrasado, depois banco/linha) — nunca mais de uma
-  // ao mesmo tempo no relatório: se sobrou alguma divisão que passou pelos
-  // dois primeiros filtros mas travou no do banco, `firstVeteranIssue`/
-  // `firstLateArrivalIssue` podem estar preenchidos de OUTRAS divisões só
+  const issue = pass.firstBenchIssue;
+  // As cinco causas de exclusão total são checadas na mesma ordem do filtro
+  // acima (veterano, marcador, acúmulo marcador×veterano, atrasado, banco/linha)
+  // — nunca mais de uma ao mesmo tempo no relatório: se sobrou alguma divisão
+  // que passou pelos primeiros filtros mas travou no do banco, os
+  // `first*Issue` anteriores podem estar preenchidos de OUTRAS divisões só
   // descartadas por eles, mas `out` só fica vazio se TODAS travarem em algum
-  // dos três filtros — a mensagem reporta a causa que aparece primeiro na
-  // varredura.
-  const veteranInfeasibility = out.length === 0 && firstVeteranIssue !== null
-    ? { message: veteranInfeasibilityMessage(firstVeteranIssue, numTeams) }
+  // dos filtros — a mensagem reporta a causa que aparece primeiro na varredura.
+  // A exclusão do cadastro NUNCA aparece aqui: ou ela produziu resultado (via
+  // fallback, `exclusionsIgnored = true`), ou o bloqueio é de outra regra — ela
+  // nunca é, sozinha, a causa reportada ao usuário.
+  const blocked = pass.out.length === 0;
+  const veteranInfeasibility = blocked && pass.firstVeteranIssue !== null
+    ? { message: veteranInfeasibilityMessage(pass.firstVeteranIssue, numTeams) }
     : null;
-  const lateArrivalInfeasibility = out.length === 0 && veteranInfeasibility === null && firstLateArrivalIssue !== null
-    ? { message: lateArrivalInfeasibilityMessage(firstLateArrivalIssue, numTeams) }
+  const goodMarkerInfeasibility = blocked && veteranInfeasibility === null && pass.firstGoodMarkerIssue !== null
+    ? { message: goodMarkerInfeasibilityMessage(pass.firstGoodMarkerIssue, numTeams) }
     : null;
-  const benchInfeasibility = out.length === 0 && veteranInfeasibility === null && lateArrivalInfeasibility === null && issue !== null
+  const markerVeteranStackingInfeasibility =
+    blocked && veteranInfeasibility === null && goodMarkerInfeasibility === null && pass.firstStackingIssue !== null
+      ? { message: markerVeteranStackingMessage(pass.firstStackingIssue.markers, pass.firstStackingIssue.veterans, numTeams) }
+      : null;
+  const earlierCause = veteranInfeasibility ?? goodMarkerInfeasibility ?? markerVeteranStackingInfeasibility;
+  const lateArrivalInfeasibility = blocked && earlierCause === null && pass.firstLateArrivalIssue !== null
+    ? { message: lateArrivalInfeasibilityMessage(pass.firstLateArrivalIssue, numTeams) }
+    : null;
+  const benchInfeasibility = blocked && earlierCause === null && lateArrivalInfeasibility === null && issue !== null
     ? { message: benchInfeasibilityMessage(issue, numTeams, active.length, allowTwoConsecutiveBench) }
     : null;
   lastRunReport = {
     feasibility, candidatesEvaluated: divisions.length, elapsedMs,
     benchInfeasibility, veteranInfeasibility, lateArrivalInfeasibility,
+    goodMarkerInfeasibility, markerVeteranStackingInfeasibility, exclusionsIgnored,
   };
-  return out.sort((a, b) => a.cost - b.cost);
+  return pass.out.sort((a, b) => a.cost - b.cost);
 };
 
 /** A melhor divisão (conveniência sobre balanceTeamsOptions). */
@@ -1081,7 +1435,7 @@ export const balanceTeams = (
 
 const finalize = (
   teams: DivTeam[], neverGk: boolean, allowTwoConsecutiveBench: boolean, separate: [string, string][], cache?: FormationCache,
-  lateArrivals?: ReadonlyMap<string, number>,
+  lateArrivals?: ReadonlyMap<string, number>, exclusionPairs: [string, string][] = [],
 ): BalanceResult => {
   const built = teams.map((t) => buildBalancedTeam(t, neverGk, allowTwoConsecutiveBench, cache, gamesForTeamCount(teams.length), lateArrivals));
   const gap = (sel: (b: BalancedTeam) => number): number => {
@@ -1092,9 +1446,16 @@ const finalize = (
   const teamOf = teamOfIdMap(teams);
   const nameOf = new Map<string, string>();
   teams.forEach((t) => { [t.gk, ...t.line, ...t.bench].forEach((r) => { if (r) nameOf.set(r.player.id, r.player.name); }); });
-  const separationViolations = separate
-    .filter(([a, b]) => { const ta = teamOf.get(a); const tb = teamOf.get(b); return ta != null && tb != null && ta === tb; })
-    .map(([a, b]) => `${nameOf.get(a) ?? a} & ${nameOf.get(b) ?? b}`);
+  const pairViolations = (pairs: [string, string][]): string[] =>
+    pairs
+      .filter(([a, b]) => { const ta = teamOf.get(a); const tb = teamOf.get(b); return ta != null && tb != null && ta === tb; })
+      .map(([a, b]) => `${nameOf.get(a) ?? a} & ${nameOf.get(b) ?? b}`);
+  const separationViolations = pairViolations(separate);
+  // Pares EXCLUÍDOS NO CADASTRO que acabaram juntos NESTE resultado — mesmo
+  // cálculo de `separationViolations`, mas sobre `exclusionPairs` (regra HARD
+  // do cadastro, não a config SOFT de "manter separados"). Só fica não-vazio
+  // quando este resultado veio da passagem de FALLBACK (regra desligada).
+  const excludedPairsViolations = pairViolations(exclusionPairs);
   const allMetrics = teams.map((t) => teamMetrics(t, neverGk, allowTwoConsecutiveBench, cache, gamesForTeamCount(teams.length), lateArrivals));
   const goalkeeperWarnings = allMetrics
     .map((m) => m.goalkeeperWarning)
@@ -1111,6 +1472,7 @@ const finalize = (
       cobertura: cobs.length === built.length ? round(Math.max(...cobs) - Math.min(...cobs)) : null,
     },
     separationViolations,
+    excludedPairsViolations,
     goalkeeperWarnings,
   };
 };

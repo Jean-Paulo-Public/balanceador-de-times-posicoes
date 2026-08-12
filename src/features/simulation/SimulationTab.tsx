@@ -159,6 +159,19 @@ export function SimulationTab() {
   // `allowTwoConsecutiveBench` acima (estado local do componente, nunca no
   // zustand persistido): volta desmarcado a cada abertura do app.
   const [ignoreVeteranDistribution, setIgnoreVeteranDistribution] = useState(false);
+  // Checkbox de ESCAPE irmão do de cima, para a marcação "Sabe marcar bem"
+  // (ver `goodMarkerDistributionBroken`/`markerVeteranStackingBroken` em
+  // engine/balance.ts). Mesmo padrão: local, desmarcado por padrão, nunca
+  // persistido. Marcar desliga TANTO a distribuição de marcadores QUANTO a
+  // regra de não-acúmulo com veteranos.
+  const [ignoreGoodMarkerDistribution, setIgnoreGoodMarkerDistribution] = useState(false);
+  // Aviso da lista "Não pode jogar com" do CADASTRO (ver `excludedTeammateIds`
+  // em domain/types.ts, `derivedExclusionPairs`/`exclusionPairBroken` em
+  // engine/balance.ts) — diferente de tudo acima: não tem checkbox nenhum,
+  // porque a regra NUNCA bloqueia a simulação sozinha. Quando o fallback
+  // automático do motor precisou desligá-la (`report.exclusionsIgnored`),
+  // avisamos aqui — não é um erro, é um aviso amarelo.
+  const [exclusionsIgnored, setExclusionsIgnored] = useState(false);
   const current = results[resultIdx] ?? null;
 
   const maxFeasibleTeams = Math.max(1, Math.floor(activePlayersCount / 6));
@@ -200,26 +213,34 @@ export function SimulationTab() {
     setSimTotalGames(totalGamesForConfig);
     setTimeout(() => {
       const out = balanceTeamsOptions(players, numTeams, {
-        neverScaleGoalkeepers, separatePairs, allowTwoConsecutiveBench, ignoreVeteranDistribution, lateArrivals,
+        neverScaleGoalkeepers, separatePairs, allowTwoConsecutiveBench, ignoreVeteranDistribution,
+        ignoreGoodMarkerDistribution, lateArrivals,
       });
       const report = getLastBalanceRunReport();
       setResults(out);
       setResultIdx(0);
-      // Quatro causas de "lista vazia" possíveis (ver `BalanceRunReport`):
+      // Seis causas de "lista vazia" possíveis (ver `BalanceRunReport`):
       // encaixe de POSIÇÃO (`feasibility`), distribuição de VETERANOS
-      // (`veteranInfeasibility`), distribuição de ATRASADOS
+      // (`veteranInfeasibility`), distribuição de QUEM MARCA BEM
+      // (`goodMarkerInfeasibility`), ACÚMULO marcador×veterano
+      // (`markerVeteranStackingInfeasibility`), distribuição de ATRASADOS
       // (`lateArrivalInfeasibility`) ou regra de ROTAÇÃO DO BANCO
       // (`benchInfeasibility`, que também cobre não fechar a linha por
       // atraso) — nunca mais de uma ao mesmo tempo (a checagem de posição
-      // roda ANTES de sequer gerar divisões, e as outras três são mutuamente
-      // exclusivas no relatório).
+      // roda ANTES de sequer gerar divisões, e as outras são mutuamente
+      // exclusivas no relatório). A ORDEM aqui é a mesma do filtro no motor.
+      // NOTA: a lista "Não pode jogar com" do cadastro NUNCA aparece aqui —
+      // ela tem fallback automático (`report.exclusionsIgnored`, avisado à
+      // parte, não como inviabilidade) em vez de bloquear a simulação.
       setInfeasibilityMessage(
         out.length === 0
           ? (report?.feasibility.message ?? report?.veteranInfeasibility?.message
+            ?? report?.goodMarkerInfeasibility?.message ?? report?.markerVeteranStackingInfeasibility?.message
             ?? report?.lateArrivalInfeasibility?.message ?? report?.benchInfeasibility?.message ?? null)
           : null,
       );
       setCandidatesEvaluated(report?.candidatesEvaluated ?? null);
+      setExclusionsIgnored(report?.exclusionsIgnored ?? false);
       setIsSimulating(false);
     }, 50);
   };
@@ -349,6 +370,20 @@ export function SimulationTab() {
                     entre os times. Com isso marcado, a distribuição de veteranos deixa de valer por completo.
                   </p>
                 )}
+                <label className="checkbox-group">
+                  <input
+                    type="checkbox" checked={ignoreGoodMarkerDistribution}
+                    onChange={(e) => setIgnoreGoodMarkerDistribution(e.target.checked)}
+                  />
+                  <span style={{ fontSize: '0.95rem' }}>Desconsiderar quem marca bem</span>
+                </label>
+                {ignoreGoodMarkerDistribution && (
+                  <p className={styles.teamsWarning} style={{ marginTop: -4 }}>
+                    Escape pontual: sem isso, quem "sabe marcar bem" fica espalhado igualmente entre os times, e o
+                    time que levar um marcador a menos não leva também um veterano a mais. Com isso marcado, as duas
+                    regras deixam de valer.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -469,6 +504,15 @@ export function SimulationTab() {
             {current.separationViolations.length > 0 && (
               <p className={styles.errorHint} style={{ marginBottom: 12 }}>
                 ⚠️ Não deu pra separar sem desequilibrar muito: {current.separationViolations.join(', ')}.
+              </p>
+            )}
+            {exclusionsIgnored && (
+              <p className={styles.teamsWarning} style={{ marginBottom: 12 }}>
+                A lista "Não pode jogar com" do cadastro foi desconsiderada nesta simulação: com ela valendo,
+                nenhuma divisão de times era possível, então o balanceador tentou de novo sem essa restrição.
+                {current.excludedPairsViolations.length > 0
+                  ? ` Ficaram no mesmo time: ${current.excludedPairsViolations.join(', ')}.`
+                  : ''}
               </p>
             )}
             {current.goalkeeperWarnings.length > 0 && (

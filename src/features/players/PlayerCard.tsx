@@ -20,9 +20,15 @@ const POSITION_VISUAL: Record<Player['position'], { icon: ReactNode; color: stri
 };
 
 export function PlayerCard({ player, onEdit }: PlayerCardProps) {
-  const { togglePlayerActive, deletePlayer, updatePlayer } = usePlayerStore();
+  const { togglePlayerActive, deletePlayer, updatePlayer, players } = usePlayerStore();
   const visual = POSITION_VISUAL[player.position];
   const displayOvrs = computeDisplayOvrs(effectiveAttributesBase(player), effectiveGk(player));
+  // Nomes dos jogadores que este marcou como "não pode jogar com" (ver
+  // `excludedTeammateIds` em domain/types.ts) — só pra exibir o chip abaixo;
+  // um id apontando pra jogador removido não aparece (nem quebra nada).
+  const excludedNames = (player.excludedTeammateIds ?? [])
+    .map((id) => players.find((p) => p.id === id)?.name)
+    .filter((n): n is string => !!n);
 
   const toggleInjury = () => {
     if (isInjured(player)) {
@@ -49,6 +55,15 @@ export function PlayerCard({ player, onEdit }: PlayerCardProps) {
           <span className={`chip ${visual.chip}`}>{visual.icon} {posToLabel(player.position)}</span>
           {isPivot(player) && <span className="chip chip-accent">Pivô</span>}
           {player.veteran && <span className="chip chip-info" title="Veterano — um dos mais velhos do racha">Veterano</span>}
+          {player.goodMarker && <span className="chip chip-info" title="Sabe marcar bem — espalhado igualmente entre os times">Marcador</span>}
+          {excludedNames.length > 0 && (
+            <span
+              className="chip chip-accent"
+              title={`Restrição rígida: não pode ficar no mesmo time que ${excludedNames.join(', ')}`}
+            >
+              Não joga com: {excludedNames.join(', ')}
+            </span>
+          )}
         </div>
 
         <div className={styles.positionsRow}>
